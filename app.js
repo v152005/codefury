@@ -8,7 +8,7 @@ app.use(express.json());
 
 app.get("/", (req, res) => {
   res.json({
-    message: "CodeFury backend is running"
+    message: "CodeFury backend is running perfectly"
   });
 });
 
