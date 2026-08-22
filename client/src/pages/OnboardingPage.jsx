@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function OnboardingPage() {
-  const { lang, setLanguage, token } = useAuth();
+  const { user, lang, setLanguage, token, login } = useAuth();
   const navigate = useNavigate();
 
   // Multi-step profile state
@@ -188,7 +188,8 @@ export default function OnboardingPage() {
   };
 
   const handleSkip = () => {
-    navigate("/");
+    login({ ...(user || {}), preferredLanguage: preferredLanguage || "en" }, token);
+    navigate("/dashboard");
   };
 
   const handleSubmit = async (e) => {
@@ -222,13 +223,12 @@ export default function OnboardingPage() {
         throw new Error(data.error || t.errorDefault);
       }
 
-      // Update the user profile locally in Context if appropriate
-      if (token) {
-        // We trigger verification call which updates local auth context automatically
-        // Let's force redirect to home
+      // Update the user profile locally in Context
+      if (data.profile) {
+        login(data.profile, token);
       }
 
-      navigate("/");
+      navigate("/dashboard");
     } catch (err) {
       console.error("Onboarding submission failed:", err);
       setError(err.message || t.errorDefault);
@@ -252,9 +252,27 @@ export default function OnboardingPage() {
         boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
-          <div>
-            <h1 style={{ font: "800 28px Syne, Arial", margin: 0, color: "#fff" }}>{t.title}</h1>
-            <p style={{ margin: "5px 0 0 0", color: "#6c7b77", fontSize: "14px" }}>{t.subtitle}</p>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div
+              style={{
+                width: "48px",
+                height: "48px",
+                borderRadius: "50%",
+                background: "#fff",
+                display: "grid",
+                placeItems: "center",
+                overflow: "hidden",
+                boxShadow: "0 0 16px rgba(217, 245, 96, 0.35)",
+                border: "2px solid #d9f560",
+                flexShrink: 0
+              }}
+            >
+              <img src="/vocalyze-logo.png" alt="Vocalyze Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div>
+              <h1 style={{ font: "800 24px 'Outfit', 'Plus Jakarta Sans', Arial", margin: 0, color: "#fff" }}>{t.title}</h1>
+              <p style={{ margin: "2px 0 0 0", color: "#aab7b3", fontSize: "14px" }}>{t.subtitle}</p>
+            </div>
           </div>
           <div style={{ background: "rgba(219, 245, 96, 0.1)", color: "#d9f560", padding: "6px 12px", borderRadius: "14px", font: "700 12px 'DM Mono'" }}>
             {t.stepLabel} {step} {t.of} 3

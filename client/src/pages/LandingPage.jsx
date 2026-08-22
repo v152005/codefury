@@ -230,11 +230,9 @@ export default function LandingPage() {
           <nav className="nav">
             <Link className="brand" to="/">
               <span className="brand-mark">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                  <path d="M12 3v18M3 12h18" />
-                </svg>
+                <img src="/vocalyze-logo.png" alt="Vocalyze Logo" />
               </span>
-              vocalyze
+              Vocalyze
             </Link>
             
             <div className="navlinks">

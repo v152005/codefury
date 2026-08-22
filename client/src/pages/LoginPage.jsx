@@ -55,6 +55,7 @@ export default function LoginPage() {
       setIsSuccess(true);
 
       // Fetch profile to check if onboarding is complete
+      let userObj = data.user;
       let hasProfile = false;
       try {
         const profileRes = await fetch("http://localhost:5000/api/profile", {
@@ -64,23 +65,26 @@ export default function LoginPage() {
         });
         if (profileRes.ok) {
           const profileData = await profileRes.json();
-          if (profileData && profileData.profile && profileData.profile.preferredLanguage) {
-            hasProfile = true;
+          if (profileData && profileData.profile) {
+            userObj = { ...data.user, ...profileData.profile };
+            if (profileData.profile.preferredLanguage) {
+              hasProfile = true;
+            }
           }
         }
       } catch (profileErr) {
         console.error("Failed to check profile status on login:", profileErr);
       }
 
-      login(data.user, data.token);
+      login(userObj, data.token);
 
       setTimeout(() => {
         if (hasProfile) {
-          navigate("/");
+          navigate("/dashboard");
         } else {
           navigate("/onboarding");
         }
-      }, 950);
+      }, 500);
     } catch (err) {
       console.error(err);
       setStatus(err.message || "An unexpected error occurred.");
@@ -94,11 +98,9 @@ export default function LoginPage() {
       <section className="panel">
         <Link className="brand" to="/">
           <span className="brand-mark">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-              <path d="M12 3v18M3 12h18" />
-            </svg>
+            <img src="/vocalyze-logo.png" alt="Vocalyze Logo" />
           </span>
-          vocalyze
+          Vocalyze
         </Link>
         <h1 dangerouslySetInnerHTML={{ __html: t.panelTitle }} />
         <p>{t.panelText}</p>

@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import VoiceInput from "../components/VoiceInput";
 import DocumentScanner from "../components/DocumentScanner";
 import ExtractedFields from "../components/ExtractedFields";
 import { extractFieldsDeterministically } from "../utils/ocrParser";
-
-const langLocales = {
-  en: "en-IN",
-  hi: "hi-IN",
-  kn: "kn-IN",
-};
+import {
+  speakText,
+  cancelSpeech,
+  getLocaleForLang,
+  isSpeechRecognitionSupported,
+  isConfirmationAffirmative,
+  isConfirmationNegative
+} from "../utils/speechHelper";
 
 export default function ServiceForm() {
   const { serviceId } = useParams();
@@ -28,18 +29,68 @@ export default function ServiceForm() {
   const [currentValue, setCurrentValue] = useState("");
   const [fieldError, setFieldError] = useState("");
 
-  // AI & Voice Helpers state
-  const [explanation, setExplanation] = useState("");
-  const [explaining, setExplaining] = useState(false);
-  const [isParsing, setIsParsing] = useState(false);
-  const [parsedConfirmation, setParsedConfirmation] = useState(null);
+  // Voice Assistant UI state
+  const [voiceMode, setVoiceMode] = useState("idle"); // 'idle' | 'asking_question' | 'listening_answer' | 'asking_confirmation' | 'listening_confirmation' | 'asking_submission' | 'listening_submission' | 'submitting'
+  const [assistantSpeech, setAssistantSpeech] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [userSaidText, setUserSaidText] = useState("");
+  const [pendingAnswer, setPendingAnswer] = useState("");
+  const [isMicActive, setIsMicActive] = useState(false);
 
   // Document OCR states
   const [showScanner, setShowScanner] = useState(false);
   const [extractedData, setExtractedData] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
 
+  // Synchronous State Refs
+  const isMountedRef = useRef(true);
+  const recognitionRef = useRef(null);
+  const restartTimerRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const activeModeRef = useRef("idle");
+  const activeCallbackRef = useRef(null);
 
+  const currentFieldIndexRef = useRef(0);
+  const answersRef = useRef({});
+  const pendingAnswerRef = useRef("");
+  const questionsRef = useRef([]);
+  const serviceRef = useRef(null);
+  const applicationIdRef = useRef("");
+  const tokenRef = useRef(token);
+  const langRef = useRef(lang);
+
+  // Sync state to refs
+  useEffect(() => {
+    currentFieldIndexRef.current = currentFieldIndex;
+  }, [currentFieldIndex]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    pendingAnswerRef.current = pendingAnswer;
+  }, [pendingAnswer]);
+
+  useEffect(() => {
+    questionsRef.current = service?.questions || [];
+  }, [service]);
+
+  useEffect(() => {
+    serviceRef.current = service;
+  }, [service]);
+
+  useEffect(() => {
+    applicationIdRef.current = applicationId;
+  }, [applicationId]);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
+  useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
 
   const translations = {
     en: {
@@ -47,86 +98,236 @@ export default function ServiceForm() {
       of: "of",
       next: "Continue",
       back: "Go Back",
-      review: "Review Details",
+      review: "Review & Submit",
       loading: "Initializing application...",
       errorLoading: "Failed to initialize application.",
       invalidDate: "Please enter a valid date.",
-      invalidPhone: "Please enter a valid 10-digit phone number.",
-      explain: "Explain this",
-      listening: "Listening...",
-      speakBtn: "Speak Answer",
-      parsing: "Analyzing response...",
+      submitNow: "Submit Application",
+      confirmTitle: "Voice Confirmation",
       youSaid: "You said:",
-      detected: "Detected value:",
-      confirm: "Confirm",
-      tryAgain: "Try Again",
-      needsReview: "Confidence is low. Please confirm or correct this value.",
-      micBlocked: "Microphone is blocked. Please enter text instead."
+      detected: "Detected answer:",
+      confirm: "Yes, Confirm",
+      tryAgain: "No, Try Again",
+      sayYesNo: "Say 'Yes' to confirm or 'No' to re-enter.",
+      allCompleted: "All 11 questions have been answered. Would you like me to submit your application now? Say 'Submit' or 'Yes' to confirm.",
+      submitting: "Submitting application...",
+      repeatQuestion: "Repeat Question",
+      stopAssistant: "Stop Assistant",
+      startAssistant: "Start Assistant"
     },
     hi: {
       step: "प्रश्न",
       of: "का",
       next: "आगे बढ़ें",
       back: "पीछे जाएं",
-      review: "विवरण की समीक्षा करें",
+      review: "समीक्षा और सबमिट",
       loading: "आवेदन शुरू हो रहा है...",
       errorLoading: "आवेदन शुरू करने में विफल।",
       invalidDate: "कृपया एक वैध तिथि दर्ज करें।",
-      invalidPhone: "कृपया एक वैध 10-अंकीय फ़ोन नंबर दर्ज करें।",
-      explain: "इसे समझाएं",
-      listening: "सुन रहा हूँ...",
-      speakBtn: "उत्तर बोलें",
-      parsing: "उत्तर का विश्लेषण कर रहा हूँ...",
+      submitNow: "आवेदन जमा करें",
+      confirmTitle: "ध्वनि पुष्टि",
       youSaid: "आपने कहा:",
-      detected: "पहचाना गया मूल्य:",
-      confirm: "पुष्टि करें",
-      tryAgain: "फिर से प्रयास करें",
-      needsReview: "विश्वास कम है। कृपया इस मूल्य की पुष्टि करें या सुधारें।",
-      micBlocked: "माइक्रोफ़ोन अवरुद्ध है। कृपया उत्तर टाइप करें।"
+      detected: "पहचाना गया उत्तर:",
+      confirm: "हाँ, पुष्टि करें",
+      tryAgain: "नहीं, दोबारा प्रयास करें",
+      sayYesNo: "पुष्टि के लिए 'हाँ' कहें या दोबारा बोलने के लिए 'नहीं' कहें।",
+      allCompleted: "सभी 11 प्रश्न पूरे हो चुके हैं। क्या आप अभी अपना आवेदन जमा करना चाहते हैं? पुष्टि के लिए 'सबमिट' या 'हाँ' कहें।",
+      submitting: "आवेदन जमा हो रहा है...",
+      repeatQuestion: "प्रश्न दोबारा सुनें",
+      stopAssistant: "सहायक बंद करें",
+      startAssistant: "सहायक शुरू करें"
     },
     kn: {
       step: "ಪ್ರಶ್ನೆ",
       of: "ರ",
       next: "ಮುಂದುವರಿಯಿರಿ",
       back: "ಹಿಂದೆ ಹೋಗಿ",
-      review: "ವಿವರಗಳನ್ನು ಪರಿಶೀಲಿಸಿ",
+      review: "ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಸಲ್ಲಿಸಿ",
       loading: "ಅರ್ಜಿಯನ್ನು ಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ...",
       errorLoading: "ಅರ್ಜಿ ಪ್ರಾರಂಭಿಸಲು ವಿಫಲವಾಗಿದೆ.",
       invalidDate: "ದಯವಿಟ್ಟು ಮಾನ್ಯವಾದ ದಿನಾಂಕವನ್ನು ನಮೂದಿಸಿ.",
-      invalidPhone: "ದಯವಿಟ್ಟು ಮಾನ್ಯವಾದ 10-ಅಂಕಿಯ ಫೋನ್ ಸಂಖ್ಯೆಯನ್ನು ನಮೂದಿಸಿ.",
-      explain: "ಇದನ್ನು ವಿವರಿಸಿ",
-      listening: "ಕೇಳಿಸಲಾಗುತ್ತಿದೆ...",
-      speakBtn: "ಉತ್ತರವನ್ನು ಹೇಳಿ",
-      parsing: "ಉತ್ತರವನ್ನು ವಿಶ್ಲೇಷಿಸಲಾಗುತ್ತಿದೆ...",
+      submitNow: "ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಿ",
+      confirmTitle: "ಧ್ವನಿ ದೃಢೀಕರಣ",
       youSaid: "ನೀವು ಹೇಳಿದ್ದು:",
-      detected: "ಗುರುತಿಸಲಾದ ಮೌಲ್ಯ:",
-      confirm: "ದೃಢೀಕರಿಸಿ",
-      tryAgain: "ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ",
-      needsReview: "ನಿಖರತೆಯ ನಂಬಿಕೆ ಕಡಿಮೆಯಿದೆ. ದಯವಿಟ್ಟು ಈ ಮೌಲ್ಯವನ್ನು ಖಚಿತಪಡಿಸಿ ಅಥವಾ ತಿದ್ದಿ.",
-      micBlocked: "ಮೈಕ್ರೊಫೋನ್ ನಿರ್ಬಂಧಿಸಲಾಗಿದೆ. ದಯವಿಟ್ಟು ಪಠ್ಯವನ್ನು ನಮೂದಿಸಿ."
+      detected: "ಗುರುತಿಸಲಾದ ಉತ್ತರ:",
+      confirm: "ಹೌದು, ದೃಢೀಕರಿಸಿ",
+      tryAgain: "ಇಲ್ಲ, ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ",
+      sayYesNo: "ದೃಢೀಕರಿಸಲು 'ಹೌದು' ಅಥವಾ ಮತ್ತೊಮ್ಮೆ ಹೇಳಲು 'ಇಲ್ಲ' ಎಂದು ಹೇಳಿ.",
+      allCompleted: "ಎಲ್ಲಾ 11 ಪ್ರಶ್ನೆಗಳು ಪೂರ್ಣಗೊಂಡಿವೆ. ನೀವು ಈಗ ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಲು ಬಯಸುವಿರಾ? ದೃಢೀಕರಿಸಲು 'ಸಲ್ಲಿಸಿ' ಅಥವಾ 'ಹೌದು' ಎಂದು ಹೇಳಿ.",
+      submitting: "ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಲಾಗುತ್ತಿದೆ...",
+      repeatQuestion: "ಪ್ರಶ್ನೆ ಮತ್ತೆ ಕೇಳಿ",
+      stopAssistant: "ಸಹಾಯಕ ನಿಲ್ಲಿಸಿ",
+      startAssistant: "ಸಹಾಯಕ ಪ್ರಾರಂಭಿಸಿ"
     }
   };
 
   const t = translations[lang] || translations.en;
 
-  const preferences = user?.interactionPreferences || {
-    voiceInput: false,
-    voiceOutput: false,
-    transcription: false,
-    conversationalGuidance: false,
-    simplifiedInstructions: false,
-    captions: false
-  };
+  // Complete recognition shutdown
+  const stopListening = useCallback(() => {
+    activeModeRef.current = "idle";
+    activeCallbackRef.current = null;
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+    setIsMicActive(false);
+  }, []);
 
-  const speak = useCallback((text) => {
-    if (!preferences.voiceOutput || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = langLocales[lang] || "en-US";
-    window.speechSynthesis.speak(utterance);
-  }, [lang, preferences.voiceOutput]);
+  // Robust Speech Recognition Controller with Auto Keep-Alive
+  const startRecognition = useCallback((modeToSet, onResultCallback) => {
+    if (!isSpeechRecognitionSupported()) return;
 
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+    }
+
+    activeModeRef.current = modeToSet;
+    activeCallbackRef.current = onResultCallback;
+    setVoiceMode(modeToSet);
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SpeechRecognition();
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = getLocaleForLang(langRef.current);
+
+    rec.onstart = () => {
+      if (!isMountedRef.current) return;
+      setIsMicActive(true);
+    };
+
+    rec.onerror = (e) => {
+      if (!isMountedRef.current) return;
+      console.warn("Recognition notice:", e.error);
+      // If error occurs and we are still in listening mode, auto-retry
+      if (activeModeRef.current === modeToSet) {
+        restartTimerRef.current = setTimeout(() => {
+          if (activeModeRef.current === modeToSet && isMountedRef.current) {
+            try {
+              rec.start();
+            } catch (err) {}
+          }
+        }, 300);
+      }
+    };
+
+    rec.onend = () => {
+      if (!isMountedRef.current) return;
+      setIsMicActive(false);
+      // If recognition stopped unexpectedly while we are still waiting for user speech, auto restart!
+      if (activeModeRef.current === modeToSet) {
+        restartTimerRef.current = setTimeout(() => {
+          if (activeModeRef.current === modeToSet && isMountedRef.current) {
+            try {
+              rec.start();
+            } catch (err) {}
+          }
+        }, 300);
+      }
+    };
+
+    rec.onresult = (event) => {
+      if (!isMountedRef.current || activeModeRef.current !== modeToSet) return;
+
+      let finalStr = "";
+      let interimStr = "";
+
+      for (let i = 0; i < event.results.length; ++i) {
+        const text = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalStr += text + " ";
+        } else {
+          interimStr += text;
+        }
+      }
+
+      const activeText = (finalStr + interimStr).replace(/\s+/g, " ").trim();
+      if (activeText) {
+        setLiveTranscript(activeText);
+        setUserSaidText(activeText);
+        setCurrentValue(activeText);
+      }
+
+      // Clear any pending silence timer on new speech input
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+
+      if (activeText.length > 0) {
+        const isConfirmMode = modeToSet.includes("confirmation") || modeToSet.includes("submission");
+        
+        let debounceDelay = 1500; // Default for long spoken answers
+        if (isConfirmMode) {
+          // If unambiguous affirmative or negative detected, trigger ultra-fast
+          if (isConfirmationAffirmative(activeText) || isConfirmationNegative(activeText)) {
+            debounceDelay = 100;
+          } else {
+            debounceDelay = 400;
+          }
+        } else {
+          // Fast path for short single-word answers like Yes, No, Male, Female
+          const lower = activeText.toLowerCase();
+          if (["yes", "no", "male", "female", "haan", "nahi", "haudu", "illa"].includes(lower)) {
+            debounceDelay = 300;
+          }
+        }
+
+        silenceTimerRef.current = setTimeout(() => {
+          if (!isMountedRef.current || activeModeRef.current !== modeToSet) return;
+
+          activeModeRef.current = "processing";
+          const callbackToRun = activeCallbackRef.current;
+          activeCallbackRef.current = null;
+
+          try {
+            rec.abort();
+          } catch (e) {}
+
+          setIsMicActive(false);
+
+          if (callbackToRun) {
+            callbackToRun(activeText);
+          }
+        }, debounceDelay);
+      }
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+    } catch (err) {
+      console.error("Failed to start speech recognition:", err);
+    }
+  }, []);
+
+  // Forward declarations
+  const askCurrentQuestionRef = useRef();
+  const askForConfirmationRef = useRef();
+  const handleConfirmationResponseRef = useRef();
+  const handleAffirmativeAnswerRef = useRef();
+  const submitFinalApplicationRef = useRef();
+
+  // Initial Load: Fetch Service and Active Application
   useEffect(() => {
+    isMountedRef.current = true;
+
     if (!token) {
       navigate("/login");
       return;
@@ -141,14 +342,14 @@ export default function ServiceForm() {
         });
         const serviceData = await serviceRes.json();
 
-        if (!serviceRes.ok) {
+        if (!serviceRes.ok || !serviceData.service) {
           setError(t.errorLoading);
           setLoading(false);
           return;
         }
         setService(serviceData.service);
 
-        // 2. Resolve Active Application (Create or Resume)
+        // 2. Resolve Active Application
         let appId = sessionStorage.getItem(`active-app-${serviceId}`);
         let appData = null;
 
@@ -165,7 +366,6 @@ export default function ServiceForm() {
         }
 
         if (!appData) {
-          // Create new application context
           const createRes = await fetch("http://localhost:5000/api/applications", {
             method: "POST",
             headers: {
@@ -188,13 +388,12 @@ export default function ServiceForm() {
 
         setApplicationId(appId);
         setAnswers(appData.answers || {});
-        
-        // Find current question index based on already saved answers
-        const questions = serviceData.service.questions || [];
+
+        const questionsList = serviceData.service.questions || [];
         let startIndex = 0;
-        for (let i = 0; i < questions.length; i++) {
-          if (appData.answers && appData.answers[questions[i].id]) {
-            startIndex = i;
+        for (let i = 0; i < questionsList.length; i++) {
+          if (appData.answers && appData.answers[questionsList[i].id]) {
+            startIndex = i + 1 < questionsList.length ? i + 1 : i;
           } else {
             startIndex = i;
             break;
@@ -202,8 +401,8 @@ export default function ServiceForm() {
         }
 
         setCurrentFieldIndex(startIndex);
-        if (questions[startIndex]) {
-          setCurrentValue(appData.answers?.[questions[startIndex].id] || "");
+        if (questionsList[startIndex]) {
+          setCurrentValue(appData.answers?.[questionsList[startIndex].id] || "");
         }
       } catch (err) {
         console.error("Error initializing ServiceForm workflow:", err);
@@ -214,76 +413,396 @@ export default function ServiceForm() {
     };
 
     initApplication();
-  }, [serviceId, token, navigate, lang, t.errorLoading]);
+
+    return () => {
+      isMountedRef.current = false;
+      cancelSpeech();
+      stopListening();
+    };
+  }, [serviceId, token, navigate, lang, t.errorLoading, stopListening]);
 
   const questions = service?.questions || [];
   const currentQuestion = questions[currentFieldIndex];
-  const labelText = currentQuestion ? (currentQuestion.label[lang] || currentQuestion.label.en || currentQuestion.label) : "";
+  const labelText = currentQuestion
+    ? (currentQuestion.label[lang] || currentQuestion.label.en || currentQuestion.label)
+    : "";
 
-  // Trigger Gemini explanations on question activation
-  useEffect(() => {
-    if (loading || !currentQuestion || !labelText) return;
+  // Ask User for Audio Confirmation ("You said X, is this correct?")
+  const askForConfirmation = useCallback((parsedVal) => {
+    cancelSpeech();
+    stopListening();
 
-    const loadExplanation = async () => {
-      // Narrate original label
-      speak(labelText);
+    setPendingAnswer(parsedVal);
+    pendingAnswerRef.current = parsedVal;
+    setCurrentValue(parsedVal);
+    setUserSaidText(parsedVal);
 
-      if (!preferences.simplifiedInstructions) return;
+    const curLang = langRef.current;
+    const confirmPhrases = {
+      en: `You said: ${parsedVal}. Correct? Say 'Yes' or 'No'.`,
+      hi: `${parsedVal}। सही है? 'हाँ' या 'नहीं' कहें।`,
+      kn: `${parsedVal}। ಸರಿಯೇ? 'ಹೌದು' ಅಥವಾ 'ಇಲ್ಲ' ಎಂದು ಹೇಳಿ.`
+    };
 
+    const confirmMsg = confirmPhrases[curLang] || confirmPhrases.en;
+    setAssistantSpeech(confirmMsg);
+    setVoiceMode("asking_confirmation");
+
+    speakText(confirmMsg, curLang, () => {
+      if (!isMountedRef.current) return;
+      // Start listening for Yes / No confirmation
+      startRecognition("listening_confirmation", (response) => {
+        handleConfirmationResponseRef.current(response, parsedVal);
+      });
+    });
+  }, [startRecognition, stopListening]);
+
+  askForConfirmationRef.current = askForConfirmation;
+
+  // Handle Spoken Answer from User
+  const handleAnswerSpoken = useCallback(async (transcript) => {
+    const curIdx = currentFieldIndexRef.current;
+    const curQ = questionsRef.current[curIdx];
+    if (!curQ) return;
+
+    setLiveTranscript(transcript);
+    setUserSaidText(transcript);
+    setPendingAnswer(transcript);
+    pendingAnswerRef.current = transcript;
+
+    const curLang = langRef.current;
+    const curToken = tokenRef.current;
+    const qLabel = curQ.label[curLang] || curQ.label.en || curQ.label;
+    const cleanLower = transcript.toLowerCase().trim();
+
+    // Instant local normalization for common questions (0ms network delay)
+    if (curQ.id === "gender") {
+      if (cleanLower.includes("female") || cleanLower.includes("woman") || cleanLower.includes("mahila") || cleanLower.includes("stree") || cleanLower.includes("ಹೆಣ್ಣು") || cleanLower.includes("ಮಹಿಳೆ")) {
+        askForConfirmationRef.current("Female");
+        return;
+      }
+      if (cleanLower.includes("male") || cleanLower.includes("man") || cleanLower.includes("purush") || cleanLower.includes("gandu") || cleanLower.includes("ಗಂಡು") || cleanLower.includes("ಪುರುಷ")) {
+        askForConfirmationRef.current("Male");
+        return;
+      }
+    }
+
+    if (curQ.id === "ppoNumber" || isConfirmationAffirmative(transcript) || isConfirmationNegative(transcript)) {
+      if (isConfirmationAffirmative(transcript)) {
+        askForConfirmationRef.current("Yes");
+        return;
+      }
+      if (isConfirmationNegative(transcript)) {
+        askForConfirmationRef.current("No");
+        return;
+      }
+    }
+
+    // Normalization / AI extraction fallback for complex inputs
+    try {
+      const res = await fetch("http://localhost:5000/api/ai/parse-response", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${curToken}`
+        },
+        body: JSON.stringify({
+          field: curQ.id,
+          question: qLabel,
+          response: transcript,
+          language: curLang
+        })
+      });
+
+      const parsedData = await res.json();
+      const finalVal = parsedData.value || transcript;
+      askForConfirmationRef.current(finalVal);
+    } catch (err) {
+      console.warn("Using transcript directly:", err);
+      askForConfirmationRef.current(transcript);
+    }
+  }, []);
+
+  // Handle Confirmation Voice Input ('Yes' / 'No' / Correction)
+  const handleConfirmationResponse = useCallback((response, valToSave) => {
+    const curLang = langRef.current;
+    setLiveTranscript(response);
+
+    if (isConfirmationAffirmative(response)) {
+      // User said Yes / Confirm -> Advance to next question
+      handleAffirmativeAnswerRef.current(valToSave || pendingAnswerRef.current);
+    } else if (isConfirmationNegative(response)) {
+      // User said No / Wrong -> Re-ask current question
+      setPendingAnswer("");
+      pendingAnswerRef.current = "";
+      setUserSaidText("");
+      setCurrentValue("");
+
+      const retryPhrases = {
+        en: "Okay, let's try again.",
+        hi: "ठीक है, फिर से प्रयास करते हैं।",
+        kn: "ಸರಿ, ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸೋಣ."
+      };
+      const retryMsg = retryPhrases[curLang] || retryPhrases.en;
+      setAssistantSpeech(retryMsg);
+
+      speakText(retryMsg, curLang, () => {
+        if (!isMountedRef.current) return;
+        askCurrentQuestionRef.current();
+      });
+    } else {
+      // User spoke a new value directly during confirmation (e.g. changed "Male" to "Female")
+      const newAnswer = response.trim();
+      if (newAnswer.length > 0) {
+        setUserSaidText(newAnswer);
+        askForConfirmationRef.current(newAnswer);
+      } else {
+        askForConfirmationRef.current(valToSave || pendingAnswerRef.current);
+      }
+    }
+  }, []);
+
+  handleConfirmationResponseRef.current = handleConfirmationResponse;
+
+  // Ask Question via Audio
+  const askCurrentQuestion = useCallback(() => {
+    cancelSpeech();
+    stopListening();
+
+    const curIdx = currentFieldIndexRef.current;
+    const curQ = questionsRef.current[curIdx];
+    if (!curQ) return;
+
+    const curLang = langRef.current;
+    const qLabel = curQ.label[curLang] || curQ.label.en || curQ.label;
+    const qNum = curIdx + 1;
+    const totalQ = questionsRef.current.length;
+
+    const questionPrompts = {
+      en: `Question ${qNum} of ${totalQ}: ${qLabel}`,
+      hi: `प्रश्न ${qNum} का ${totalQ}: ${qLabel}`,
+      kn: `ಪ್ರಶ್ನೆ ${qNum} ರ ${totalQ}: ${qLabel}`
+    };
+
+    const questionSpeech = questionPrompts[curLang] || questionPrompts.en;
+    setAssistantSpeech(questionSpeech);
+    setVoiceMode("asking_question");
+    setPendingAnswer("");
+    pendingAnswerRef.current = "";
+    setUserSaidText("");
+    setLiveTranscript("");
+
+    speakText(questionSpeech, curLang, () => {
+      if (!isMountedRef.current) return;
+      // Start listening for answer
+      startRecognition("listening_answer", (transcript) => {
+        handleAnswerSpoken(transcript);
+      });
+    });
+  }, [startRecognition, handleAnswerSpoken, stopListening]);
+
+  askCurrentQuestionRef.current = askCurrentQuestion;
+
+  // Prompt Final Application Submission
+  const promptFinalSubmission = useCallback(() => {
+    cancelSpeech();
+    stopListening();
+
+    const curLang = langRef.current;
+    const totalQ = questionsRef.current.length;
+    const prompts = {
+      en: `All ${totalQ} questions have been answered. Would you like me to submit your application now? Say 'Submit' or 'Yes' to confirm.`,
+      hi: `सभी ${totalQ} प्रश्न पूरे हो चुके हैं। क्या आप अभी अपना आवेदन जमा करना चाहते हैं? पुष्टि के लिए 'सबमिट' या 'हाँ' कहें।`,
+      kn: `ಎಲ್ಲಾ ${totalQ} ಪ್ರಶ್ನೆಗಳು ಪೂರ್ಣಗೊಂಡಿವೆ. ನೀವು ಈಗ ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಲು ಬಯಸುವಿರಾ? ದೃಢೀಕರಿಸಲು 'ಸಲ್ಲಿಸಿ' ಅಥವಾ 'ಹೌದು' ಎಂದು ಹೇಳಿ.`
+    };
+
+    const promptText = prompts[curLang] || prompts.en;
+    setVoiceMode("asking_submission");
+    setAssistantSpeech(promptText);
+    setUserSaidText("");
+    setLiveTranscript("");
+
+    speakText(promptText, curLang, () => {
+      if (!isMountedRef.current) return;
+      startRecognition("listening_submission", (response) => {
+        if (isConfirmationAffirmative(response)) {
+          submitFinalApplicationRef.current();
+        } else if (isConfirmationNegative(response)) {
+          const cancelMsg = "You can review your answers or press the submit button whenever you are ready.";
+          setAssistantSpeech(cancelMsg);
+          speakText(cancelMsg, curLang);
+          setVoiceMode("idle");
+        } else {
+          // If user uttered any submission response
+          submitFinalApplicationRef.current();
+        }
+      });
+    });
+  }, [startRecognition, stopListening]);
+
+  // Submit Application
+  const submitFinalApplication = useCallback(async () => {
+    cancelSpeech();
+    stopListening();
+
+    const curLang = langRef.current;
+    const submittingPhrases = {
+      en: "Submitting your application now...",
+      hi: "आपका आवेदन जमा किया जा रहा है...",
+      kn: "ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಲಾಗುತ್ತಿದೆ..."
+    };
+
+    const subMsg = submittingPhrases[curLang] || submittingPhrases.en;
+    setVoiceMode("submitting");
+    setAssistantSpeech(subMsg);
+    speakText(subMsg, curLang);
+
+    const curAppId = applicationIdRef.current;
+    const curToken = tokenRef.current;
+    const curService = serviceRef.current;
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/applications/${curAppId}/submit`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${curToken}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        sessionStorage.removeItem(`active-app-${serviceId}`);
+        const nameVal = curService?.name[curLang] || curService?.name?.en || "Service Application";
+        navigate("/service/confirmation", {
+          state: {
+            applicationId: curAppId,
+            status: "SUBMITTED",
+            serviceName: nameVal
+          }
+        });
+      } else {
+        const errorMsg = data.error || "Submission failed. Please check validation.";
+        setFieldError(errorMsg);
+        setVoiceMode("idle");
+        speakText(errorMsg, curLang);
+      }
+    } catch (err) {
+      console.error("Submission error:", err);
+      const errorMsg = "Failed to submit application. Please check your connection.";
+      setFieldError(errorMsg);
+      setVoiceMode("idle");
+      speakText(errorMsg, curLang);
+    }
+  }, [serviceId, navigate, stopListening]);
+
+  submitFinalApplicationRef.current = submitFinalApplication;
+
+  // Save confirmed answer and advance to next question
+  const handleAffirmativeAnswer = useCallback(async (confirmedVal) => {
+    const curIdx = currentFieldIndexRef.current;
+    const curQ = questionsRef.current[curIdx];
+    if (!curQ) return;
+
+    const valClean = (confirmedVal || "").trim();
+    const updatedAnswers = {
+      ...answersRef.current,
+      [curQ.id]: valClean
+    };
+
+    answersRef.current = updatedAnswers;
+    setAnswers(updatedAnswers);
+    setPendingAnswer("");
+    pendingAnswerRef.current = "";
+
+    // Save to Firestore backend via PATCH
+    const curAppId = applicationIdRef.current;
+    const curToken = tokenRef.current;
+    if (curAppId && curToken) {
       try {
-        setExplaining(true);
-        const res = await fetch("http://localhost:5000/api/ai/explain", {
-          method: "POST",
+        await fetch(`http://localhost:5000/api/applications/${curAppId}`, {
+          method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${curToken}`
           },
-          body: JSON.stringify({
-            question: labelText,
-            language: lang
-          })
+          body: JSON.stringify({ answers: { [curQ.id]: valClean } })
         });
-
-        if (res.ok) {
-          const data = await res.json();
-          setExplanation(data.explanation);
-          
-          // Narrate simplified text
-          speak(data.explanation);
-        }
       } catch (err) {
-        console.error("AI Explanation fetch error:", err);
-      } finally {
-        setExplaining(false);
+        console.error("Error saving updated answers:", err);
       }
-    };
+    }
 
-    loadExplanation();
-  }, [currentFieldIndex, loading, labelText, token, lang, preferences.simplifiedInstructions, preferences.voiceOutput, speak, currentQuestion]);
+    const nextIndex = curIdx + 1;
+    const totalQ = questionsRef.current.length;
 
-  // Clean up speech synthesis on unmount
+    if (nextIndex < totalQ) {
+      const nextQ = questionsRef.current[nextIndex];
+      currentFieldIndexRef.current = nextIndex;
+      setCurrentFieldIndex(nextIndex);
+      setCurrentValue(updatedAnswers[nextQ.id] || "");
+      setUserSaidText("");
+      setLiveTranscript("");
+      askCurrentQuestionRef.current();
+    } else {
+      // All questions confirmed!
+      promptFinalSubmission();
+    }
+  }, [promptFinalSubmission]);
+
+  handleAffirmativeAnswerRef.current = handleAffirmativeAnswer;
+
+  // Start voice assistant on initial service load
   useEffect(() => {
-    return () => {
-      if ("speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
-    };
-  }, []);
+    if (!loading && service && currentQuestion) {
+      const timer = setTimeout(() => {
+        askCurrentQuestion();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, service]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Manual Form Submission / Next Handlers
+  const handleManualNext = (e) => {
+    e.preventDefault();
+    if (currentQuestion?.required && (!currentValue || currentValue.trim() === "")) {
+      setFieldError(`"${labelText}" is required.`);
+      return;
+    }
+    handleAffirmativeAnswer(currentValue);
+  };
+
+  const handleBack = () => {
+    cancelSpeech();
+    stopListening();
+    setFieldError("");
+    setPendingAnswer("");
+    pendingAnswerRef.current = "";
+    setUserSaidText("");
+    setLiveTranscript("");
+
+    const curIdx = currentFieldIndexRef.current;
+    if (curIdx > 0) {
+      const prevIndex = curIdx - 1;
+      currentFieldIndexRef.current = prevIndex;
+      setCurrentFieldIndex(prevIndex);
+      setCurrentValue(answersRef.current[questions[prevIndex].id] || "");
+      askCurrentQuestion();
+    } else {
+      navigate("/dashboard");
+    }
+  };
 
   const handleOCRComplete = async (ocrText) => {
     setShowScanner(false);
-    
-    // 1. Try deterministic extraction first
-    const requiredFields = questions.map(q => q.id);
+    const requiredFields = questions.map((q) => q.id);
     const deterministic = extractFieldsDeterministically(ocrText, requiredFields);
-    
-    // Check if any fields were NOT confidently extracted (confidence < 0.90)
+
     const missingOrLowConfidence = requiredFields.filter(
-      field => !deterministic.fields[field] || deterministic.confidence[field] < 0.90
+      (field) => !deterministic.fields[field] || deterministic.confidence[field] < 0.90
     );
-    
+
     if (missingOrLowConfidence.length > 0 && token) {
-      // 2. Call backend Gemini fallback for remaining fields
       setIsExtracting(true);
       try {
         const res = await fetch("http://localhost:5000/api/ai/parse-document", {
@@ -298,10 +817,10 @@ export default function ServiceForm() {
             requiredFields: missingOrLowConfidence
           })
         });
-        
+
         if (res.ok) {
           const geminiResult = await res.json();
-          requiredFields.forEach(field => {
+          requiredFields.forEach((field) => {
             if (geminiResult.fields?.[field] !== undefined && geminiResult.fields[field] !== null) {
               if (!deterministic.fields[field] || (geminiResult.confidence?.[field] || 0) > deterministic.confidence[field]) {
                 deterministic.fields[field] = geminiResult.fields[field];
@@ -316,7 +835,7 @@ export default function ServiceForm() {
         setIsExtracting(false);
       }
     }
-    
+
     setExtractedData(deterministic);
   };
 
@@ -326,13 +845,9 @@ export default function ServiceForm() {
       ...confirmedFields
     };
     setAnswers(updatedAnswers);
+    answersRef.current = updatedAnswers;
     setExtractedData(null);
-    
-    const currentFieldId = questions[currentFieldIndex].id;
-    if (confirmedFields[currentFieldId]) {
-      setCurrentValue(confirmedFields[currentFieldId]);
-    }
-    
+
     if (applicationId && token) {
       try {
         await fetch(`http://localhost:5000/api/applications/${applicationId}`, {
@@ -348,6 +863,7 @@ export default function ServiceForm() {
       }
     }
 
+    // Advance to next unfilled question
     let nextIndex = currentFieldIndex;
     for (let i = 0; i < questions.length; i++) {
       if (!updatedAnswers[questions[i].id]) {
@@ -355,130 +871,11 @@ export default function ServiceForm() {
         break;
       }
     }
-    
+
+    currentFieldIndexRef.current = nextIndex;
     setCurrentFieldIndex(nextIndex);
     setCurrentValue(updatedAnswers[questions[nextIndex].id] || "");
-  };
-
-  const handleVoiceTranscript = async (transcript) => {
-    if (!currentQuestion) return;
-
-    setIsParsing(true);
-    setFieldError("");
-    setParsedConfirmation(null);
-
-    try {
-      const res = await fetch("http://localhost:5000/api/ai/parse-response", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          field: currentQuestion.id,
-          question: labelText,
-          response: transcript,
-          language: lang
-        })
-      });
-
-      const parsedData = await res.json();
-
-      if (res.ok && parsedData.value) {
-        setCurrentValue(parsedData.value);
-        setParsedConfirmation({
-          transcript,
-          value: parsedData.value,
-          confidence: parsedData.confidence,
-          needsConfirmation: parsedData.needsConfirmation || parsedData.confidence < 0.90,
-          clarification: parsedData.clarification
-        });
-      } else {
-        setFieldError(parsedData.clarification || "We couldn't extract a clear answer. Please try speaking again or type your answer.");
-        speak(parsedData.clarification || "We couldn't extract a clear answer. Please try again.");
-      }
-    } catch (err) {
-      console.error("Response parsing error:", err);
-      setFieldError("Failed to parse voice response. Please type your response.");
-    } finally {
-      setIsParsing(false);
-    }
-  };
-
-  const handleSaveAndProgress = async (valToSave) => {
-    setFieldError("");
-
-    // Validate type formatting
-    if (currentQuestion.type === "date" && valToSave) {
-      const parsed = Date.parse(valToSave.trim());
-      if (isNaN(parsed)) {
-        setFieldError(t.invalidDate);
-        return;
-      }
-    }
-
-    try {
-      const updatedAnswers = {
-        ...answers,
-        [currentQuestion.id]: valToSave.trim()
-      };
-
-      // PATCH answers to backend REST API
-      const patchRes = await fetch(`http://localhost:5000/api/applications/${applicationId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ answers: { [currentQuestion.id]: valToSave.trim() } })
-      });
-
-      if (!patchRes.ok) {
-        const patchData = await patchRes.json();
-        setFieldError(patchData.error || "Failed to save field answer.");
-        return;
-      }
-
-      setAnswers(updatedAnswers);
-      setParsedConfirmation(null);
-      setExplanation("");
-
-      // Move to next step or review page
-      if (currentFieldIndex < questions.length - 1) {
-        const nextIndex = currentFieldIndex + 1;
-        setCurrentFieldIndex(nextIndex);
-        setCurrentValue(updatedAnswers[questions[nextIndex].id] || "");
-      } else {
-        // Form completed, navigate to review screen
-        navigate(`/service/${serviceId}/review`);
-      }
-    } catch (err) {
-      console.error("Save answer error:", err);
-      setFieldError("Server connection error. Please try again.");
-    }
-  };
-
-  const handleNext = (e) => {
-    e.preventDefault();
-    if (currentQuestion.required && (!currentValue || currentValue.trim() === "")) {
-      setFieldError(`"${labelText}" is required.`);
-      return;
-    }
-    handleSaveAndProgress(currentValue);
-  };
-
-  const handleBack = () => {
-    setFieldError("");
-    setParsedConfirmation(null);
-    setExplanation("");
-
-    if (currentFieldIndex > 0) {
-      const prevIndex = currentFieldIndex - 1;
-      setCurrentFieldIndex(prevIndex);
-      setCurrentValue(answers[questions[prevIndex].id] || "");
-    } else {
-      navigate("/");
-    }
+    askCurrentQuestion();
   };
 
   if (loading) {
@@ -495,82 +892,159 @@ export default function ServiceForm() {
       <div style={{ background: "#092d2c", minHeight: "100vh", color: "#f6f3eb", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: "20px" }}>
         <div className="grain"></div>
         <p style={{ color: "#ffb798" }}>⚠️ {error || t.errorLoading}</p>
-        <Link to="/" style={{ color: "#d9f560", fontWeight: "700" }}>← Back to Dashboard</Link>
+        <Link to="/dashboard" style={{ color: "#d9f560", fontWeight: "700" }}>← Back to Dashboard</Link>
       </div>
     );
   }
 
-  const progressPercent = (currentFieldIndex / questions.length) * 100;
+  const progressPercent = ((currentFieldIndex + 1) / questions.length) * 100;
 
   return (
     <div style={{ background: "#092d2c", minHeight: "100vh", color: "#f6f3eb", display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
       <div className="grain"></div>
 
-      <div style={{
-        background: "rgba(18, 49, 47, 0.65)",
-        backdropFilter: "blur(20px)",
-        border: "1px solid rgba(217, 245, 96, 0.15)",
-        borderRadius: "28px",
-        width: "100%",
-        maxWidth: "600px",
-        padding: "40px",
-        boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
-      }}>
+      <div
+        style={{
+          background: "rgba(18, 49, 47, 0.85)",
+          backdropFilter: "blur(24px)",
+          border: "2px solid rgba(217, 245, 96, 0.25)",
+          borderRadius: "28px",
+          width: "100%",
+          maxWidth: "680px",
+          padding: "36px",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.5)"
+        }}
+        role="region"
+        aria-label="Vocalyze Voice Assisted Application Form"
+      >
         {/* Header Section */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
-          <div>
-            <h1 style={{ font: "800 22px Syne, Arial", margin: 0, color: "#fff" }}>
-              {service.name[lang] || service.name.en || service.name}
-            </h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div
+              style={{
+                width: "44px",
+                height: "44px",
+                borderRadius: "50%",
+                background: "#fff",
+                display: "grid",
+                placeItems: "center",
+                overflow: "hidden",
+                boxShadow: "0 0 16px rgba(217, 245, 96, 0.35)",
+                border: "2px solid #d9f560",
+                flexShrink: 0
+              }}
+            >
+              <img src="/vocalyze-logo.png" alt="Vocalyze Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", fontWeight: "800", color: "#d9f560", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Vocalyze • Voice Form
+              </span>
+              <h1 style={{ font: "800 22px 'Outfit', 'Plus Jakarta Sans', Arial", margin: "2px 0 0 0", color: "#fff" }}>
+                {service.name[lang] || service.name.en || service.name}
+              </h1>
+            </div>
           </div>
-          <div style={{ background: "rgba(219, 245, 96, 0.1)", color: "#d9f560", padding: "6px 12px", borderRadius: "14px", font: "700 12px 'DM Mono'" }}>
+          <div style={{ background: "rgba(219, 245, 96, 0.15)", color: "#d9f560", padding: "6px 14px", borderRadius: "14px", font: "800 13px 'DM Mono'" }}>
             {t.step} {currentFieldIndex + 1} {t.of} {questions.length}
           </div>
         </div>
 
         {/* Progress Bar */}
-        <div style={{ background: "rgba(255,255,255,0.08)", height: "6px", borderRadius: "3px", overflow: "hidden", marginBottom: "30px" }}>
-          <div style={{ width: `${progressPercent}%`, height: "100%", background: "#d9f560", transition: "width 0.3s ease" }}></div>
+        <div style={{ background: "rgba(255,255,255,0.08)", height: "6px", borderRadius: "3px", overflow: "hidden", marginBottom: "25px" }}>
+          <div style={{ width: `${progressPercent}%`, height: "100%", background: "#d9f560", transition: "width 0.4s ease" }}></div>
         </div>
 
-        {/* Simplified Instructions/AI Explanation Box */}
-        {preferences.simplifiedInstructions && (explanation || explaining) && (
-          <div style={{
-            background: "rgba(219, 245, 96, 0.04)",
-            border: "1px solid rgba(219, 245, 96, 0.15)",
+        {/* AI Voice Assistant Conversational Card */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, rgba(217, 245, 96, 0.08), rgba(0,0,0,0.35))",
+            border: isMicActive ? "2px solid #ff4b4b" : "1px solid rgba(217, 245, 96, 0.3)",
             borderRadius: "20px",
-            padding: "20px",
-            marginBottom: "30px",
-            fontSize: "14px",
-            lineHeight: "1.6"
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <span style={{ color: "#d9f560", fontWeight: "800", fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                ⓘ AI Assistant
+            padding: "22px",
+            marginBottom: "25px",
+            boxShadow: isMicActive ? "0 0 25px rgba(255, 75, 75, 0.25)" : "none",
+            transition: "all 0.3s ease"
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "50%",
+                  background: isMicActive ? "#ff4b4b" : "#d9f560",
+                  color: "#12312f",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: "15px",
+                  fontWeight: "900",
+                  boxShadow: isMicActive ? "0 0 12px #ff4b4b" : "0 0 10px rgba(217,245,96,0.3)"
+                }}
+              >
+                🎙️
+              </div>
+              <span style={{ fontSize: "12px", fontWeight: "800", color: isMicActive ? "#ff7b7b" : "#d9f560", textTransform: "uppercase" }}>
+                {isMicActive
+                  ? (voiceMode.includes("confirmation") ? "Listening for Confirmation ('Yes' / 'No')..." : "Listening for your Answer...")
+                  : (voiceMode.startsWith("asking") ? "Speaking to you..." : "AI Assistant Ready")}
               </span>
-              {preferences.voiceOutput && (
-                <button
-                  type="button"
-                  onClick={() => speak(explanation)}
-                  style={{ background: "transparent", border: "none", color: "#d9f560", cursor: "pointer", fontSize: "12px", fontWeight: "700" }}
-                >
-                  🔊 Listen
-                </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={askCurrentQuestion}
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "#d9f560",
+                borderRadius: "10px",
+                padding: "6px 12px",
+                fontSize: "12px",
+                fontWeight: "700",
+                cursor: "pointer"
+              }}
+            >
+              🔊 {t.repeatQuestion}
+            </button>
+          </div>
+
+          {/* Assistant Voice Line */}
+          <div style={{ fontSize: "15px", color: "#fff", lineHeight: "1.5", marginBottom: "12px" }}>
+            🗣️ <strong style={{ color: "#d9f560" }}>Vocalyze:</strong> {assistantSpeech || labelText}
+          </div>
+
+          {/* Persistent "You said" and Detected Answer display */}
+          {(userSaidText || liveTranscript) && (
+            <div
+              style={{
+                background: "rgba(0,0,0,0.3)",
+                border: "1px solid rgba(217, 245, 96, 0.2)",
+                borderRadius: "14px",
+                padding: "12px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px"
+              }}
+            >
+              <div style={{ fontSize: "14px", color: "#d9f560", fontWeight: "700" }}>
+                🎙️ {t.youSaid} <span style={{ color: "#fff" }}>"{userSaidText || liveTranscript}"</span>
+              </div>
+              {pendingAnswer && (
+                <div style={{ fontSize: "12px", color: "#aab7b3" }}>
+                  ✓ {t.detected} <strong style={{ color: "#d9f560" }}>{pendingAnswer}</strong>
+                </div>
               )}
             </div>
-            {explaining ? (
-              <span style={{ color: "#6c7b77", fontStyle: "italic" }}>Simplifying question...</span>
-            ) : (
-              <p style={{ margin: 0, color: "#f6f3eb" }}>{explanation}</p>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Form Question */}
-        <form onSubmit={handleNext}>
-          <div style={{ minHeight: "130px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <label htmlFor="wizard-input" style={{ display: "block", font: "700 18px Manrope", margin: 0, color: "#fff", lineHeight: "1.4" }}>
+        {/* Question Form */}
+        <form onSubmit={handleManualNext}>
+          <div style={{ minHeight: "100px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <label htmlFor="wizard-input" style={{ display: "block", font: "700 17px Manrope", margin: 0, color: "#fff", lineHeight: "1.4" }}>
                 {labelText}
               </label>
               <button
@@ -581,9 +1055,9 @@ export default function ServiceForm() {
                   border: "1px solid rgba(219, 245, 96, 0.3)",
                   color: "#d9f560",
                   borderRadius: "12px",
-                  padding: "8px 14px",
+                  padding: "6px 12px",
                   fontWeight: "700",
-                  fontSize: "13px",
+                  fontSize: "12px",
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -594,166 +1068,130 @@ export default function ServiceForm() {
               </button>
             </div>
 
-            {/* AI Confirmation Screen Banner */}
-            {parsedConfirmation ? (
-              <div style={{
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "20px",
-                padding: "20px",
-                marginBottom: "20px"
-              }}>
-                <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "#aab7b3" }}>
-                  {t.youSaid} <strong style={{ color: "#fff" }}>"{parsedConfirmation.transcript}"</strong>
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <span style={{ fontSize: "11px", color: "#6c7b77", fontWeight: "800", textTransform: "uppercase" }}>
-                    {t.detected}
-                  </span>
-                  <input
-                    type="text"
-                    value={currentValue}
-                    onChange={(e) => setCurrentValue(e.target.value)}
-                    style={{
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(219, 245, 96, 0.3)",
-                      borderRadius: "12px",
-                      padding: "12px 16px",
-                      color: "#fff",
-                      fontSize: "16px",
-                      fontWeight: "700"
-                    }}
-                  />
-                </div>
-
-                {parsedConfirmation.needsConfirmation && (
-                  <p style={{ color: "#ffb798", fontSize: "12px", margin: "10px 0 0 0" }}>
-                    ⚠️ {t.needsReview}
-                  </p>
-                )}
-
-                <div style={{ display: "flex", gap: "12px", marginTop: "20px" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setParsedConfirmation(null);
-                      setCurrentValue("");
-                    }}
-                    style={{
-                      flex: 1,
-                      background: "rgba(255,75,75,0.1)",
-                      border: "1px solid rgba(255,75,75,0.3)",
-                      color: "#ff7575",
-                      borderRadius: "12px",
-                      padding: "12px",
-                      fontWeight: "700",
-                      fontSize: "13px"
-                    }}
-                  >
-                    ✗ {t.tryAgain}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveAndProgress(currentValue)}
-                    style={{
-                      flex: 2,
-                      background: "#d9f560",
-                      border: "none",
-                      color: "#12312f",
-                      borderRadius: "12px",
-                      padding: "12px",
-                      fontWeight: "800",
-                      fontSize: "13px"
-                    }}
-                  >
-                    ✓ {t.confirm}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Standard Input Field */
-              <input
-                id="wizard-input"
-                type={currentQuestion.type === "date" ? "date" : "text"}
-                value={currentValue}
-                onChange={(e) => {
-                  setFieldError("");
-                  setCurrentValue(e.target.value);
-                }}
-                autoFocus
-                placeholder={currentQuestion.type === "date" ? "YYYY-MM-DD" : ""}
-                style={{
-                  width: "100%",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: "16px",
-                  padding: "16px 20px",
-                  color: "#fff",
-                  fontSize: "16px"
-                }}
-              />
-            )}
-
-            {isParsing && (
-              <p style={{ color: "#d9f560", fontSize: "13px", fontStyle: "italic", marginTop: "12px" }}>
-                ⏳ {t.parsing}
-              </p>
-            )}
+            {/* Answer Input Field */}
+            <input
+              id="wizard-input"
+              type={currentQuestion?.type === "date" ? "date" : "text"}
+              value={currentValue}
+              onChange={(e) => {
+                setFieldError("");
+                setCurrentValue(e.target.value);
+              }}
+              placeholder={currentQuestion?.type === "date" ? "YYYY-MM-DD" : "Speak into microphone or type answer..."}
+              style={{
+                width: "100%",
+                background: "rgba(255,255,255,0.04)",
+                border: "2px solid rgba(217, 245, 96, 0.3)",
+                borderRadius: "16px",
+                padding: "16px 20px",
+                color: "#fff",
+                fontSize: "16px",
+                fontWeight: "700",
+                boxSizing: "border-box"
+              }}
+            />
 
             {fieldError && (
-              <p style={{ color: "#ffb798", background: "rgba(255, 183, 152, 0.07)", padding: "12px 18px", borderRadius: "12px", fontSize: "13px", marginTop: "18px" }}>
+              <p style={{ color: "#ffb798", background: "rgba(255, 183, 152, 0.08)", padding: "10px 16px", borderRadius: "12px", fontSize: "13px", marginTop: "14px" }}>
                 ⚠️ {fieldError}
               </p>
             )}
           </div>
 
-          {/* Voice Input Microphone Widget */}
-          {preferences.voiceInput && !parsedConfirmation && (
-            <VoiceInput
-              lang={lang}
-              onTranscript={handleVoiceTranscript}
-              promptText={t.speakBtn}
-            />
-          )}
-
-          {/* Standard Navigation Controls */}
-          {!parsedConfirmation && (
-            <div style={{ display: "flex", gap: "16px", marginTop: "40px" }}>
-              <button
-                type="button"
-                onClick={handleBack}
-                style={{
-                  flex: 1,
-                  background: "transparent",
-                  border: "1px solid rgba(255,255,255,0.15)",
-                  color: "#fff",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  fontWeight: "700"
-                }}
-              >
-                ← {t.back}
-              </button>
-              <button
-                type="submit"
-                disabled={isParsing}
-                style={{
-                  flex: 2,
-                  background: isParsing ? "rgba(217, 245, 96, 0.4)" : "#d9f560",
-                  border: "none",
-                  color: isParsing ? "rgba(18, 49, 47, 0.5)" : "#12312f",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  fontWeight: "800",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center"
-                }}
-              >
-                {currentFieldIndex === questions.length - 1 ? t.review : t.next} →
-              </button>
+          {/* Voice Confirmation Card if pending */}
+          {pendingAnswer && (
+            <div
+              style={{
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(217, 245, 96, 0.25)",
+                borderRadius: "16px",
+                padding: "16px 20px",
+                marginTop: "20px"
+              }}
+            >
+              <div style={{ fontSize: "13px", color: "#aab7b3", marginBottom: "12px" }}>
+                {t.sayYesNo}
+              </div>
+              <div style={{ display: "flex", gap: "12px" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingAnswer("");
+                    pendingAnswerRef.current = "";
+                    setUserSaidText("");
+                    setCurrentValue("");
+                    askCurrentQuestion();
+                  }}
+                  style={{
+                    flex: 1,
+                    background: "rgba(255,75,75,0.15)",
+                    border: "1px solid rgba(255,75,75,0.4)",
+                    color: "#ff8b8b",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    fontWeight: "800",
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  ✗ {t.tryAgain}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAffirmativeAnswer(pendingAnswer || currentValue)}
+                  style={{
+                    flex: 2,
+                    background: "#d9f560",
+                    border: "none",
+                    color: "#12312f",
+                    borderRadius: "12px",
+                    padding: "12px",
+                    fontWeight: "800",
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  ✓ {t.confirm}
+                </button>
+              </div>
             </div>
           )}
+
+          {/* Form Actions */}
+          <div style={{ display: "flex", gap: "16px", marginTop: "30px" }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,0.15)",
+                color: "#fff",
+                borderRadius: "16px",
+                padding: "14px",
+                fontWeight: "700",
+                cursor: "pointer"
+              }}
+            >
+              ← {t.back}
+            </button>
+            <button
+              type="submit"
+              style={{
+                flex: 2,
+                background: "#d9f560",
+                border: "none",
+                color: "#12312f",
+                borderRadius: "16px",
+                padding: "14px",
+                fontWeight: "800",
+                fontSize: "14px",
+                cursor: "pointer"
+              }}
+            >
+              {currentFieldIndex === questions.length - 1 ? t.submitNow : t.next} →
+            </button>
+          </div>
         </form>
       </div>
 
@@ -765,10 +1203,9 @@ export default function ServiceForm() {
       )}
 
       {isExtracting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 animate-fadeIn">
-          <div className="bg-[#092d2c] border border-[#1e4a47] rounded-xl p-6 flex flex-col items-center">
-            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#d9f560] mb-4"></div>
-            <p className="text-[#f6f3eb] font-semibold">Extracting fields with AI...</p>
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)" }}>
+          <div style={{ background: "#092d2c", border: "1px solid #1e4a47", borderRadius: "16px", padding: "24px", color: "#f6f3eb", fontWeight: "700" }}>
+            Extracting document fields with AI...
           </div>
         </div>
       )}
@@ -776,7 +1213,7 @@ export default function ServiceForm() {
       {extractedData && (
         <ExtractedFields
           extractedData={extractedData}
-          requiredFields={questions.map(q => q.id)}
+          requiredFields={questions.map((q) => q.id)}
           currentLanguage={lang}
           onConfirm={handleConfirmExtractedFields}
           onCancel={() => setExtractedData(null)}

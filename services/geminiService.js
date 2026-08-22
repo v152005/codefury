@@ -108,6 +108,53 @@ const tryNormalizeDate = (text) => {
  * @returns {Promise<object>} JSON schema containing { field, value, confidence, needsConfirmation, clarification }.
  */
 const parseUserResponse = async (field, question, response, language) => {
+  if (!response) {
+    return {
+      field,
+      value: "",
+      confidence: 1.0,
+      needsConfirmation: false,
+      clarification: ""
+    };
+  }
+
+  const cleanResp = response.toLowerCase().trim();
+
+  // Instant normalization for Yes/No / negative answers (like PPO number question)
+  const negativeAnswers = [
+    "no", "nope", "nah", "none", "don't have", "do not have", "no ppo", "no number", "not have",
+    "nahi", "nahi hai", "na", "galat",
+    "illa", "thappu", "beda", "nanage illa",
+    "ಇಲ್ಲ", "ತಪ್ಪು", "ಬೇಡ", "ನನ್ನ ಬಳಿ ಇಲ್ಲ",
+    "नहीं", "नहीं है", "ना"
+  ];
+  if (negativeAnswers.some(neg => cleanResp === neg || cleanResp.startsWith(neg))) {
+    return {
+      field,
+      value: "No",
+      confidence: 1.0,
+      needsConfirmation: false,
+      clarification: ""
+    };
+  }
+
+  const affirmativeAnswers = [
+    "yes", "yeah", "yep", "i have", "have", "yes i have", "yes have",
+    "haan", "ha", "sahi", "theek", "ji haan",
+    "haudu", "haudhu", "sari", "ide", "nanna bali ide",
+    "ಹೌದು", "ಸರಿ", "ಇದೆ", "ನನ್ನ ಬಳಿ ಇದೆ",
+    "हाँ", "हाँ है", "सही"
+  ];
+  if (affirmativeAnswers.some(aff => cleanResp === aff)) {
+    return {
+      field,
+      value: "Yes",
+      confidence: 1.0,
+      needsConfirmation: false,
+      clarification: ""
+    };
+  }
+
   // Pre-process date fields using local normalizer for absolute accuracy and zero latency
   if (field === "dateOfBirth" || question.toLowerCase().includes("date") || question.toLowerCase().includes("birth")) {
     const normalized = tryNormalizeDate(response);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import DashboardVoiceAssistant from "../components/DashboardVoiceAssistant";
 
 export default function Dashboard() {
   const { user, token, logout, lang } = useAuth();
@@ -127,11 +128,9 @@ export default function Dashboard() {
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "50px", borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: "20px" }}>
           <Link className="brand" to="/" style={{ color: "#fff" }}>
             <span className="brand-mark">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                <path d="M12 3v18M3 12h18" />
-              </svg>
+              <img src="/vocalyze-logo.png" alt="Vocalyze Logo" />
             </span>
-            vocalyze
+            Vocalyze
           </Link>
           <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
             <span style={{ fontSize: "14px", fontWeight: "700" }}>
@@ -159,17 +158,20 @@ export default function Dashboard() {
           </div>
         </header>
 
+        {/* AI Voice Assistant for Blind / Accessible Navigation */}
+        <DashboardVoiceAssistant user={user} services={services} lang={lang} />
+
         {error && (
           <p style={{ color: "#ffb798", background: "rgba(255, 183, 152, 0.07)", padding: "12px 18px", borderRadius: "12px", fontSize: "13px", marginBottom: "30px" }}>
             ⚠️ {error}
           </p>
         )}
 
-        <h2 style={{ font: "800 24px Syne", marginBottom: "8px", color: "#fff" }}>{t.subGreeting}</h2>
+        <h2 style={{ font: "800 24px 'Outfit', 'Plus Jakarta Sans', sans-serif", marginBottom: "8px", color: "#fff" }}>{t.subGreeting}</h2>
 
         {/* Dynamic Services Grid */}
         <section style={{ marginBottom: "60px", marginTop: "30px" }}>
-          <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#6c7b77", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "20px" }}>{t.servicesTitle}</h3>
+          <h3 style={{ fontSize: "16px", fontWeight: "800", color: "#8ca19c", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "20px" }}>{t.servicesTitle}</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "20px" }}>
             {services.map((service) => (
               <article
@@ -187,10 +189,10 @@ export default function Dashboard() {
                 }}
               >
                 <div>
-                  <span style={{ fontSize: "11px", fontWeight: "700", background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: "6px", textTransform: "uppercase", color: "#6c7b77" }}>
+                  <span style={{ fontSize: "11px", fontWeight: "700", background: "rgba(255,255,255,0.06)", padding: "4px 8px", borderRadius: "6px", textTransform: "uppercase", color: "#8ca19c" }}>
                     {service.category || t.category}
                   </span>
-                  <h4 style={{ font: "800 20px Syne", margin: "12px 0 8px 0", color: "#fff" }}>
+                  <h4 style={{ font: "800 20px 'Outfit', 'Plus Jakarta Sans', sans-serif", margin: "12px 0 8px 0", color: "#fff" }}>
                     {service.name && typeof service.name === "object" ? (service.name[lang] || service.name.en) : service.name}
                   </h4>
                   <p style={{ fontSize: "13px", color: "#aab7b3", margin: 0, lineHeight: "1.5" }}>

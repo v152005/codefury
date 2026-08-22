@@ -37,13 +37,18 @@ const validateServiceAnswers = (questions, answers, skipRequired = false) => {
 
       // Check custom patterns (like phone regex)
       if (question.validation && question.validation.pattern) {
-        try {
-          const regex = new RegExp(question.validation.pattern);
-          if (!regex.test(trimmedValue)) {
-            return { isValid: false, message: `Please enter a valid format for "${labelText}".` };
+        // Exempt common affirmative/negative/not-applicable answers
+        const isExempt = /^(no|none|na|n\/a|not applicable|yes|illa|nahi|ಇಲ್ಲ|ಹೌದು|नहीं|हाँ)$/i.test(trimmedValue);
+        if (!isExempt) {
+          try {
+            const regex = new RegExp(question.validation.pattern);
+            const cleanDigits = trimmedValue.replace(/[\s-]/g, "");
+            if (!regex.test(trimmedValue) && !regex.test(cleanDigits)) {
+              return { isValid: false, message: `Please enter a valid format for "${labelText}".` };
+            }
+          } catch (err) {
+            console.error(`Invalid regex pattern for question ${question.id}:`, err);
           }
-        } catch (err) {
-          console.error(`Invalid regex pattern for question ${question.id}:`, err);
         }
       }
     }

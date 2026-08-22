@@ -148,7 +148,7 @@ Sample Kumar
     <div style={overlayStyle}>
       <div style={containerStyle}>
         <div style={headerStyle}>
-          <h3 style={{ margin: 0, font: "800 20px Syne, Arial", color: "#fff" }}>
+          <h3 style={{ margin: 0, font: "800 20px 'Outfit', 'Plus Jakarta Sans', Arial", color: "#fff" }}>
             📄 Scan or Upload Document
           </h3>
           <button 

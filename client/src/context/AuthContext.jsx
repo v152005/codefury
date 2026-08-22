@@ -23,8 +23,13 @@ export const AuthProvider = ({ children }) => {
 
   const login = (userData, userToken) => {
     setUser(userData);
-    setToken(userToken);
-    localStorage.setItem("vocalyze-token", userToken);
+    if (userToken) {
+      setToken(userToken);
+      localStorage.setItem("vocalyze-token", userToken);
+    }
+    if (userData?.preferredLanguage) {
+      setLang(userData.preferredLanguage);
+    }
   };
 
   const logout = () => {
@@ -37,6 +42,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const verifyUser = async () => {
       if (!token) {
+        setUser(null);
         setLoading(false);
         return;
       }
@@ -49,6 +55,9 @@ export const AuthProvider = ({ children }) => {
         if (response.ok) {
           const data = await response.json();
           setUser(data.profile);
+          if (data.profile?.preferredLanguage) {
+            setLang(data.profile.preferredLanguage);
+          }
         } else {
           // Invalid or expired token
           logout();
@@ -76,6 +85,7 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
+        setUser,
         token,
         lang,
         size,

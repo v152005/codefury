@@ -105,7 +105,7 @@ export default function ExtractedFields({ extractedData, requiredFields, current
     <div style={overlayStyle}>
       <div style={containerStyle}>
         <div style={headerStyle}>
-          <h3 style={{ margin: 0, font: "800 20px Syne, Arial", color: "#fff" }}>
+          <h3 style={{ margin: 0, font: "800 20px 'Outfit', 'Plus Jakarta Sans', Arial", color: "#fff" }}>
             🔍 Review Extracted Details
           </h3>
           <p style={{ margin: "6px 0 0 0", fontSize: "13px", color: "#bfbdb7", lineHeight: "1.4" }}>

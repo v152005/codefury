@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { speakText, cancelSpeech } from "../utils/speechHelper";
 
 export default function ApplicationConfirmation() {
   const location = useLocation();
@@ -43,6 +44,18 @@ export default function ApplicationConfirmation() {
 
   const t = translations[lang] || translations.en;
 
+  useEffect(() => {
+    const confirmationSpeech = `${t.success}. ${t.service}: ${serviceName}. ${t.appId}: ${applicationId}. ${t.desc}`;
+    const timer = setTimeout(() => {
+      speakText(confirmationSpeech, lang);
+    }, 400);
+
+    return () => {
+      clearTimeout(timer);
+      cancelSpeech();
+    };
+  }, [lang, t, serviceName, applicationId]);
+
   return (
     <div style={{ background: "#092d2c", minHeight: "100vh", color: "#f6f3eb", display: "flex", justifyContent: "center", alignItems: "center", padding: "40px 20px" }}>
       <div className="grain"></div>
@@ -58,23 +71,23 @@ export default function ApplicationConfirmation() {
         textAlign: "center",
         boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
       }}>
-        {/* Success Icon */}
+        {/* Vocalyze Success Brand Avatar */}
         <div style={{
-          width: "72px",
-          height: "72px",
+          width: "80px",
+          height: "80px",
           borderRadius: "50%",
-          background: "rgba(217, 245, 96, 0.1)",
-          color: "#d9f560",
+          background: "#fff",
           display: "grid",
           placeItems: "center",
-          margin: "0 auto 24px auto",
-          fontSize: "36px",
-          fontWeight: "900"
+          margin: "0 auto 20px auto",
+          overflow: "hidden",
+          border: "3px solid #d9f560",
+          boxShadow: "0 0 25px rgba(217, 245, 96, 0.4)"
         }}>
-          ✓
+          <img src="/vocalyze-logo.png" alt="Vocalyze Logo" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         </div>
 
-        <h1 style={{ font: "800 24px Syne, Arial", margin: "0 0 12px 0", color: "#fff", lineHeight: "1.3" }}>{t.success}</h1>
+        <h1 style={{ font: "800 24px 'Outfit', 'Plus Jakarta Sans', Arial", margin: "0 0 12px 0", color: "#fff", lineHeight: "1.3" }}>{t.success}</h1>
         <p style={{ color: "#aab7b3", fontSize: "14px", lineHeight: "1.6", margin: "0 0 35px 0" }}>{t.desc}</p>
 
         {/* Details Card */}

@@ -186,7 +186,7 @@ export default function ReviewApplication() {
         padding: "40px",
         boxShadow: "0 20px 40px rgba(0,0,0,0.4)"
       }}>
-        <h1 style={{ font: "800 22px Syne, Arial", margin: 0, color: "#fff" }}>{t.title}</h1>
+        <h1 style={{ font: "800 22px 'Outfit', 'Plus Jakarta Sans', Arial", margin: 0, color: "#fff" }}>{t.title}</h1>
         <p style={{ margin: "5px 0 30px 0", color: "#6c7b77", fontSize: "14px" }}>{t.desc}</p>
 
         {/* Display Answers */}
