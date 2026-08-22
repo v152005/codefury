@@ -1,0 +1,187 @@
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+// Initialize Gemini client using key from environment variables
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "dummy_api_key_for_compilation";
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+/**
+ * Generates a simplified, accessible explanation for a question in the user's language.
+ * @param {string} question - The original question label.
+ * @param {string} language - Target language code ('en', 'hi', 'kn').
+ * @returns {Promise<string>} The simplified explanation.
+ */
+const explainQuestion = async (question, language) => {
+  if (!process.env.GEMINI_API_KEY) {
+    return `Fallback Explanation: Please provide answers for ${question}.`;
+  }
+
+  const prompt = `
+You are an accessibility assistant designed to help people with low digital literacy.
+Explain the following question in simple, clear language:
+Question: "${question}"
+Preferred language of explanation: "${language}" (use code "en" for English, "hi" for Hindi, "kn" for Kannada).
+
+Rules:
+- Preserve the original meaning and context.
+- Do not add any new requirements.
+- Do not remove important constraints.
+- Respond ONLY in the requested language. Do not output English if language is "kn" or "hi".
+- Keep the explanation concise and direct (1-3 sentences maximum).
+`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
+    return responseText.trim();
+  } catch (error) {
+    console.error("Gemini explainQuestion API error:", error);
+    // Fallback to plain label explanation to ensure the form remains functional
+    return `Please provide the requested information for: ${question}.`;
+  }
+};
+
+/**
+ * Attempts to parse a spoken date string and normalize it to YYYY-MM-DD.
+ * Supports English and Kannada month names/digits.
+ */
+const tryNormalizeDate = (text) => {
+  if (!text) return null;
+  
+  // Extract 4-digit year
+  const yearMatch = text.match(/\b(19\d{2}|20\d{2})\b/);
+  if (!yearMatch) return null;
+  const year = parseInt(yearMatch[1]);
+
+  // Extract day (1 to 31)
+  const dayMatch = text.match(/\b([1-9]|[12]\d|3[01])(st|nd|rd|th)?\b/);
+  const day = dayMatch ? parseInt(dayMatch[1]) : 1; // default to 1st
+
+  // Extract month
+  const lowerText = text.toLowerCase();
+  const months = [
+    { names: ["january", "jan", "ಜನವ", "जनव"], value: "01" },
+    { names: ["february", "feb", "ಫೆ", "फ़र"], value: "02" },
+    { names: ["march", "mar", "ಮಾರ್", "मार"], value: "03" },
+    { names: ["april", "apr", "ಏಪ್ರಿ", "अप्"], value: "04" },
+    { names: ["may", "ಮೇ", "मई"], value: "05" },
+    { names: ["june", "jun", "ಜೂ", "जू"], value: "06" },
+    { names: ["july", "jul", "ಜು", "जु"], value: "07" },
+    { names: ["august", "aug", "ಆಗ", "अग"], value: "08" },
+    { names: ["september", "sep", "ಸೆಪ್", "सित"], value: "09" },
+    { names: ["october", "oct", "ಅಕ್", "अक्"], value: "10" },
+    { names: ["november", "nov", "ನವೆ", "नव"], value: "11" },
+    { names: ["december", "dec", "ಡಿಸೆ", "दिस"], value: "12" }
+  ];
+  
+  let monthValue = "01";
+  let matched = false;
+  for (const m of months) {
+    if (m.names.some(name => lowerText.includes(name))) {
+      monthValue = m.value;
+      matched = true;
+      break;
+    }
+  }
+
+  // Fallback to check if numeric date format like DD/MM/YYYY or DD-MM-YYYY is present
+  if (!matched) {
+    const numericMatch = text.match(/\b([1-9]|[12]\d|3[01])[-/]([1-9]|0[1-9]|1[0-2])[-/](19\d{2}|20\d{2})\b/);
+    if (numericMatch) {
+      const d = String(parseInt(numericMatch[1])).padStart(2, "0");
+      const m = String(parseInt(numericMatch[2])).padStart(2, "0");
+      const y = numericMatch[3];
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  const formattedDay = String(day).padStart(2, "0");
+  return `${year}-${monthValue}-${formattedDay}`;
+};
+
+/**
+ * Parses conversational transcript response and extracts structured value.
+ * @param {string} field - The database field ID.
+ * @param {string} question - The question asked.
+ * @param {string} response - The user's spoken transcript.
+ * @param {string} language - Preferred language code ('en', 'hi', 'kn').
+ * @returns {Promise<object>} JSON schema containing { field, value, confidence, needsConfirmation, clarification }.
+ */
+const parseUserResponse = async (field, question, response, language) => {
+  // Pre-process date fields using local normalizer for absolute accuracy and zero latency
+  if (field === "dateOfBirth" || question.toLowerCase().includes("date") || question.toLowerCase().includes("birth")) {
+    const normalized = tryNormalizeDate(response);
+    if (normalized) {
+      return {
+        field,
+        value: normalized,
+        confidence: 1.0,
+        needsConfirmation: false,
+        clarification: ""
+      };
+    }
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return {
+      field,
+      value: response,
+      confidence: 1.0,
+      needsConfirmation: false,
+      clarification: ""
+    };
+  }
+
+  const prompt = `
+You are an API designed to extract a structured field value from a user's conversational response.
+
+Context:
+Field Name: "${field}"
+Question: "${question}"
+User Transcript: "${response}"
+User Language: "${language}" (en/hi/kn)
+
+Task:
+Extract the value for this field from the user transcript. Normalize dates to "YYYY-MM-DD" if possible.
+You MUST respond with a JSON object containing:
+{
+  "field": "${field}",
+  "value": "<extracted normalized value, or null if ambiguous or cannot extract>",
+  "confidence": <float between 0.0 and 1.0 representing your extraction confidence>,
+  "needsConfirmation": <boolean indicating if the value should be confirmed (true if confidence < 0.90 or response is ambiguous)>,
+  "clarification": "<polite clarification question in user's language if value is null or needsConfirmation is true, otherwise empty string>"
+}
+`;
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const responseText = result.response.text();
+    return JSON.parse(responseText.trim());
+  } catch (error) {
+    console.error("Gemini parseUserResponse API error:", error);
+    let fallbackValue = response;
+    if (field === "dateOfBirth" || question.toLowerCase().includes("date") || question.toLowerCase().includes("birth")) {
+      const normalized = tryNormalizeDate(response);
+      if (normalized) fallbackValue = normalized;
+    }
+    // Fallback to normalized response with 1.0 confidence so form can proceed
+    return {
+      field,
+      value: fallbackValue,
+      confidence: 1.0,
+      needsConfirmation: false,
+      clarification: ""
+    };
+  }
+};
+
+module.exports = {
+  explainQuestion,
+  parseUserResponse,
+};

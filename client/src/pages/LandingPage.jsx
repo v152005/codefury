@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import Dashboard from "./Dashboard";
 import { landingTranslations } from "../utils/translations";
 import ReaderSizeControl from "../components/ReaderSizeControl";
 import { AnimatedScore } from "../components/AnimatedScore";
@@ -37,6 +38,14 @@ function ViewportCounter({ value, suffix = "" }) {
 export default function LandingPage() {
   const { user, logout, lang, setLanguage, size, setSize } = useAuth();
   const t = landingTranslations[lang] || landingTranslations.en;
+  const navigate = useNavigate();
+
+  // Redirect to onboarding if user is logged in but hasn't completed onboarding
+  useEffect(() => {
+    if (user && !user.preferredLanguage) {
+      navigate("/onboarding");
+    }
+  }, [user, navigate]);
 
   const [activeMode, setActiveMode] = useState("vision");
   const [joinedList, setJoinedList] = useState(false);
@@ -206,6 +215,11 @@ export default function LandingPage() {
 
   const currentModeContent =
     (modesData[lang] || modesData.en)[activeMode] || modesData.en.vision;
+
+  // If user is logged in and has completed onboarding, render Dashboard instead of landing page
+  if (user && user.preferredLanguage) {
+    return <Dashboard />;
+  }
 
   return (
     <>

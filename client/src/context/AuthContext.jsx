@@ -21,6 +21,18 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem("vocalyze-language", lang);
   }, [lang]);
 
+  const login = (userData, userToken) => {
+    setUser(userData);
+    setToken(userToken);
+    localStorage.setItem("vocalyze-token", userToken);
+  };
+
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem("vocalyze-token");
+  };
+
   // Verify active JWT token on app load
   useEffect(() => {
     const verifyUser = async () => {
@@ -50,18 +62,6 @@ export const AuthProvider = ({ children }) => {
     
     verifyUser();
   }, [token]);
-
-  const login = (userData, userToken) => {
-    setUser(userData);
-    setToken(userToken);
-    localStorage.setItem("vocalyze-token", userToken);
-  };
-
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    localStorage.removeItem("vocalyze-token");
-  };
 
   const changeLanguage = (newLang) => {
     setLang(newLang);

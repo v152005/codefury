@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { loginTranslations } from "../utils/translations";
-import ReaderSizeControl from "../components/ReaderSizeControl";
+
 
 export default function LoginPage() {
   const { lang, setLanguage, login, size, setSize } = useAuth();
