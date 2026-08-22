@@ -56,7 +56,16 @@ const registerUser = async (name, email, password) => {
     salt,
   });
 
-  return { uid: userRecord.uid, name, email };
+  const user = { uid: userRecord.uid, name, email: email.toLowerCase().trim() };
+
+  // Generate JWT Token
+  const token = jwt.sign(
+    { uid: user.uid, name: user.name, email: user.email },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  return { user, token };
 };
 
 /**

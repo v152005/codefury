@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { signupTranslations } from "../utils/translations";
 
 export default function SignupPage() {
-  const { lang, setLanguage, size, setSize } = useAuth();
+  const { lang, setLanguage, login, size, setSize } = useAuth();
   const t = signupTranslations[lang] || signupTranslations.en;
 
   const [name, setName] = useState("");
@@ -67,9 +67,10 @@ export default function SignupPage() {
 
       setStatus(t.success);
       setIsSuccess(true);
+      login(data.user, data.token);
 
       setTimeout(() => {
-        navigate("/login");
+        navigate("/");
       }, 950);
     } catch (err) {
       console.error(err);

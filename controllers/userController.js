@@ -13,10 +13,11 @@ const signup = async (req, res) => {
       return res.status(400).json({ error: validation.message });
     }
 
-    const user = await userService.registerUser(name, email, password);
+    const { user, token } = await userService.registerUser(name, email, password);
     return res.status(201).json({
       message: "User registered successfully",
       user,
+      token,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
