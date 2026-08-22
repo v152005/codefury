@@ -53,10 +53,33 @@ export default function LoginPage() {
 
       setStatus(t.success);
       setIsSuccess(true);
+
+      // Fetch profile to check if onboarding is complete
+      let hasProfile = false;
+      try {
+        const profileRes = await fetch("http://localhost:5000/api/profile", {
+          headers: {
+            Authorization: `Bearer ${data.token}`,
+          },
+        });
+        if (profileRes.ok) {
+          const profileData = await profileRes.json();
+          if (profileData && profileData.profile && profileData.profile.preferredLanguage) {
+            hasProfile = true;
+          }
+        }
+      } catch (profileErr) {
+        console.error("Failed to check profile status on login:", profileErr);
+      }
+
       login(data.user, data.token);
 
       setTimeout(() => {
-        navigate("/");
+        if (hasProfile) {
+          navigate("/");
+        } else {
+          navigate("/onboarding");
+        }
       }, 950);
     } catch (err) {
       console.error(err);

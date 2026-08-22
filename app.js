@@ -7,7 +7,9 @@ app.use(cors());
 app.use(express.json());
 
 const userRoutes = require("./routes/userRoutes");
+const profileRoutes = require("./routes/profileRoutes");
 app.use("/api/users", userRoutes);
+app.use("/api/profile", profileRoutes);
 
 app.get("/", (req, res) => {
   res.json({

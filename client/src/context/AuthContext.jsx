@@ -29,14 +29,14 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       try {
-        const response = await fetch("http://localhost:5000/api/users/profile", {
+        const response = await fetch("http://localhost:5000/api/profile", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
         });
         if (response.ok) {
           const data = await response.json();
-          setUser(data.user);
+          setUser(data.profile);
         } else {
           // Invalid or expired token
           logout();

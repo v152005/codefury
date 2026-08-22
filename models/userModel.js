@@ -33,7 +33,34 @@ const findUserByEmail = async (email) => {
   return { id: doc.id, ...doc.data() };
 };
 
+/**
+ * Updates user profile details in Firestore.
+ * @param {string} uid - Firebase Auth user ID.
+ * @param {object} profileData - Profile attributes to update.
+ */
+const updateUserProfile = async (uid, profileData) => {
+  await userCollection.doc(uid).update({
+    ...profileData,
+    updatedAt: new Date(),
+  });
+};
+
+/**
+ * Finds a user by document ID (uid) in Firestore.
+ * @param {string} uid - Document ID to search for.
+ * @returns {object|null} The user object or null.
+ */
+const findUserById = async (uid) => {
+  const doc = await userCollection.doc(uid).get();
+  if (!doc.exists) {
+    return null;
+  }
+  return { id: doc.id, ...doc.data() };
+};
+
 module.exports = {
   createUserDoc,
   findUserByEmail,
+  updateUserProfile,
+  findUserById,
 };

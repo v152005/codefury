@@ -70,7 +70,7 @@ export default function SignupPage() {
       login(data.user, data.token);
 
       setTimeout(() => {
-        navigate("/");
+        navigate("/onboarding");
       }, 950);
     } catch (err) {
       console.error(err);
