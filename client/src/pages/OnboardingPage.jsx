@@ -192,7 +192,11 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (step < 3) {
+      nextStep(e);
+      return;
+    }
     setIsSubmitting(true);
     setError("");
 
@@ -418,7 +422,7 @@ export default function OnboardingPage() {
             {step > 1 && (
               <button
                 type="button"
-                onClick={prevStep}
+                onClick={(e) => prevStep(e)}
                 style={{
                   flex: 1,
                   background: "transparent",
@@ -436,7 +440,7 @@ export default function OnboardingPage() {
             {step < 3 ? (
               <button
                 type="button"
-                onClick={nextStep}
+                onClick={(e) => nextStep(e)}
                 style={{
                   flex: 2,
                   background: "#d9f560",
