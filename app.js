@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 
 const app = express();
 
@@ -18,10 +19,18 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/ai", aiRoutes);
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "CodeFury backend is running perfectly"
+// Serve static frontend in production
+if (process.env.NODE_ENV === "production") {
+  app.use(express.static(path.join(__dirname, "client/dist")));
+  app.get('/{*splat}', (req, res) => {
+    res.sendFile(path.join(__dirname, "client/dist/index.html"));
   });
-});
+} else {
+  app.get("/", (req, res) => {
+    res.json({
+      message: "CodeFury backend is running perfectly"
+    });
+  });
+}
 
 module.exports = app;

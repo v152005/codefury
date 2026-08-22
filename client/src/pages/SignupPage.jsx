@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { signupTranslations } from "../utils/translations";
+import { API_BASE_URL } from "../config";
 
 export default function SignupPage() {
   const { lang, setLanguage, login, size, setSize } = useAuth();
@@ -47,7 +48,7 @@ export default function SignupPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("http://localhost:5000/api/users/signup", {
+      const response = await fetch(`${API_BASE_URL}/api/users/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

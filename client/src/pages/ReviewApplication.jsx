@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../config";
 
 export default function ReviewApplication() {
   const { serviceId } = useParams();
@@ -23,31 +24,31 @@ export default function ReviewApplication() {
       submitBtn: "Submit Application",
       backBtn: "Go Back & Edit",
       loading: "Loading review details...",
-      errorLoading: "Failed to load application schema.",
+      errorLoading: "Failed to load application details. Please try again.",
+      missingAnswers: "No active application found. Please start from the beginning.",
       errorSubmit: "Submission failed. Please check validation or try again.",
-      missingAnswers: "No active application session found. Please start over.",
     },
     hi: {
       title: "अपने आवेदन की समीक्षा करें",
-      desc: "कृपया सबमिट करने से पहले नीचे दिए गए विवरणों की समीक्षा करें.",
-      confirmLabel: "मैं पुष्टि करता/करती हूँ कि प्रदान किए गए सभी विवरण सही और सत्य हैं।",
+      desc: "कृपया सबमिट करने से पहले नीचे दिए गए विवरणों की समीक्षा करें।",
+      confirmLabel: "मैं पुष्टि करता हूँ कि प्रदान किए गए सभी विवरण सही और सत्य हैं।",
       submitBtn: "आवेदन जमा करें",
-      backBtn: "पीछे जाएं और संपादित करें",
+      backBtn: "वापस जाएं और संपादित करें",
       loading: "समीक्षा विवरण लोड हो रहा है...",
-      errorLoading: "सेवा प्रारूप लोड करने में विफल।",
+      errorLoading: "आवेदन विवरण लोड करने में विफल। कृपया पुन: प्रयास करें।",
+      missingAnswers: "कोई सक्रिय आवेदन नहीं मिला। कृपया प्रारंभ से शुरू करें।",
       errorSubmit: "जमा करना विफल रहा। कृपया सत्यापन जांचें या फिर से प्रयास करें।",
-      missingAnswers: "कोई सक्रिय आवेदन सत्र नहीं मिला। कृपया पुनः प्रारंभ करें।",
     },
     kn: {
       title: "ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ಪರಿಶೀಲಿಸಿ",
-      desc: "ದಯವಿಟ್ಟು ಸಲ್ಲಿಸುವ ಮೊದಲು ಕೆಳಗಿನ ವಿವರಗಳನ್ನು ಪರಿಶೀಲಿಸಿ.",
-      confirmLabel: "ನೀಡಲಾದ ಎಲ್ಲಾ ವಿವರಗಳು ಸರಿಯಾದವು ಮತ್ತು ಸತ್ಯವಾದವು ಎಂದು ನಾನು ದೃಢೀಕರಿಸುತ್ತೇನೆ.",
+      desc: "ಸಲ್ಲಿಸುವ ಮುನ್ನ ದಯವಿಟ್ಟು ಕೆಳಗಿನ ವಿವರಗಳನ್ನು ಪರಿಶೀಲಿಸಿ.",
+      confirmLabel: "ಒದಗಿಸಿದ ಎಲ್ಲಾ ವಿವರಗಳು ಸರಿಯಾದವು ಮತ್ತು ಸತ್ಯ ಎಂದು ನಾನು ದೃಢೀಕರಿಸುತ್ತೇನೆ.",
       submitBtn: "ಅರ್ಜಿಯನ್ನು ಸಲ್ಲಿಸಿ",
-      backBtn: "ಹಿಂದೆ ಹೋಗಿ ಮತ್ತು ತಿದ್ದುಪಡಿ ಮಾಡಿ",
+      backBtn: "ಹಿಂದಕ್ಕೆ ಹೋಗಿ ತಿದ್ದುಪಡಿ ಮಾಡಿ",
       loading: "ಪರಿಶೀಲನಾ ವಿವರಗಳನ್ನು ಲೋಡ್ ಮಾಡಲಾಗುತ್ತಿದೆ...",
-      errorLoading: "ಸೇವಾ ನಮೂನೆ ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ.",
+      errorLoading: "ಅರ್ಜಿ ವಿವರಗಳನ್ನು ಲೋಡ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಮತ್ತೊಮ್ಮೆ ಪ್ರಯತ್ನಿಸಿ.",
+      missingAnswers: "ಯಾವುದೇ ಸಕ್ರಿಯ ಅರ್ಜಿ ಕಂಡುಬಂದಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೊದಲಿನಿಂದ ಪ್ರಾರಂಭಿಸಿ.",
       errorSubmit: "ಅರ್ಜಿ ಸಲ್ಲಿಸಲು ವಿಫಲವಾಗಿದೆ. ದಯವಿಟ್ಟು ಪರಿಶೀಲಿಸಿ ಅಥವಾ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
-      missingAnswers: "ಯಾವುದೇ ಸಕ್ರಿಯ ಅರ್ಜಿ ಅವಧಿ ಕಂಡುಬಂದಿಲ್ಲ. ದಯವಿಟ್ಟು ಮೊದಲಿನಿಂದ ಪ್ರಾರಂಭಿಸಿ.",
     }
   };
 
@@ -63,7 +64,7 @@ export default function ReviewApplication() {
       try {
         setLoading(true);
         // 1. Fetch Service Schema
-        const serviceRes = await fetch(`http://localhost:5000/api/services/${serviceId}`, {
+        const serviceRes = await fetch(`${API_BASE_URL}/api/services/${serviceId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const serviceData = await serviceRes.json();
@@ -84,7 +85,7 @@ export default function ReviewApplication() {
         }
         setApplicationId(appId);
 
-        const appRes = await fetch(`http://localhost:5000/api/applications/${appId}`, {
+        const appRes = await fetch(`${API_BASE_URL}/api/applications/${appId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const appData = await appRes.json();

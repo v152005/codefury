@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { loginTranslations } from "../utils/translations";
+import { API_BASE_URL } from "../config";
 
 
 export default function LoginPage() {
@@ -37,7 +38,7 @@ export default function LoginPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("http://localhost:5000/api/users/login", {
+      const response = await fetch(`${API_BASE_URL}/api/users/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -58,7 +59,7 @@ export default function LoginPage() {
       let userObj = data.user;
       let hasProfile = false;
       try {
-        const profileRes = await fetch("http://localhost:5000/api/profile", {
+        const profileRes = await fetch(`${API_BASE_URL}/api/profile`, {
           headers: {
             Authorization: `Bearer ${data.token}`,
           },

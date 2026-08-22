@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../config";
 
 export default function OnboardingPage() {
   const { user, lang, setLanguage, token, login } = useAuth();
@@ -208,7 +209,7 @@ export default function OnboardingPage() {
     };
 
     try {
-      const response = await fetch("http://localhost:5000/api/profile", {
+      const response = await fetch(`${API_BASE_URL}/api/profile`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

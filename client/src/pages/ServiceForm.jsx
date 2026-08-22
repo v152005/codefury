@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { API_BASE_URL } from "../config";
 import DocumentScanner from "../components/DocumentScanner";
 import ExtractedFields from "../components/ExtractedFields";
 import { extractFieldsDeterministically } from "../utils/ocrParser";
@@ -337,7 +338,7 @@ export default function ServiceForm() {
       try {
         setLoading(true);
         // 1. Fetch Service Schema
-        const serviceRes = await fetch(`http://localhost:5000/api/services/${serviceId}`, {
+        const serviceRes = await fetch(`${API_BASE_URL}/api/services/${serviceId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const serviceData = await serviceRes.json();
@@ -354,7 +355,7 @@ export default function ServiceForm() {
         let appData = null;
 
         if (appId) {
-          const appRes = await fetch(`http://localhost:5000/api/applications/${appId}`, {
+          const appRes = await fetch(`${API_BASE_URL}/api/applications/${appId}`, {
             headers: { Authorization: `Bearer ${token}` }
           });
           if (appRes.ok) {
@@ -366,7 +367,7 @@ export default function ServiceForm() {
         }
 
         if (!appData) {
-          const createRes = await fetch("http://localhost:5000/api/applications", {
+          const createRes = await fetch(`${API_BASE_URL}/api/applications`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -500,7 +501,7 @@ export default function ServiceForm() {
 
     // Normalization / AI extraction fallback for complex inputs
     try {
-      const res = await fetch("http://localhost:5000/api/ai/parse-response", {
+      const res = await fetch(`${API_BASE_URL}/api/ai/parse-response`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -662,7 +663,7 @@ export default function ServiceForm() {
     const curService = serviceRef.current;
 
     try {
-      const response = await fetch(`http://localhost:5000/api/applications/${curAppId}/submit`, {
+      const response = await fetch(`${API_BASE_URL}/api/applications/${curAppId}/submit`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${curToken}`
@@ -720,7 +721,7 @@ export default function ServiceForm() {
     const curToken = tokenRef.current;
     if (curAppId && curToken) {
       try {
-        await fetch(`http://localhost:5000/api/applications/${curAppId}`, {
+        await fetch(`${API_BASE_URL}/api/applications/${curAppId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
@@ -805,7 +806,7 @@ export default function ServiceForm() {
     if (missingOrLowConfidence.length > 0 && token) {
       setIsExtracting(true);
       try {
-        const res = await fetch("http://localhost:5000/api/ai/parse-document", {
+        const res = await fetch(`${API_BASE_URL}/api/ai/parse-document`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -850,7 +851,7 @@ export default function ServiceForm() {
 
     if (applicationId && token) {
       try {
-        await fetch(`http://localhost:5000/api/applications/${applicationId}`, {
+        await fetch(`${API_BASE_URL}/api/applications/${applicationId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",

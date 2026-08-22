@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import DashboardVoiceAssistant from "../components/DashboardVoiceAssistant";
+import { API_BASE_URL } from "../config";
 
 export default function Dashboard() {
   const { user, token, logout, lang } = useAuth();
@@ -82,13 +83,13 @@ export default function Dashboard() {
       try {
         setLoading(true);
         // Fetch services
-        const servicesRes = await fetch("http://localhost:5000/api/services", {
+        const servicesRes = await fetch(`${API_BASE_URL}/api/services`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const servicesData = await servicesRes.json();
 
         // Fetch applications
-        const appsRes = await fetch("http://localhost:5000/api/applications", {
+        const appsRes = await fetch(`${API_BASE_URL}/api/applications`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const appsData = await appsRes.json();
