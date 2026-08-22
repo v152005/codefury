@@ -1,6 +1,12 @@
-const { db } = require("../config/firebase");
+const { db, getFirebaseConfigMessage } = require("../config/firebase");
 
-const serviceCollection = db.collection("services");
+const getServiceCollection = () => {
+  if (!db) {
+    throw new Error(getFirebaseConfigMessage());
+  }
+
+  return db.collection("services");
+};
 
 const DEFAULT_SERVICES = [
   {
@@ -312,7 +318,7 @@ const DEFAULT_SERVICES = [
  */
 const getAllServices = async () => {
   try {
-    const snapshot = await serviceCollection.where("enabled", "==", true).get();
+    const snapshot = await getServiceCollection().where("enabled", "==", true).get();
     if (snapshot.empty) {
       await seedServiceDefinitions();
       return DEFAULT_SERVICES;
@@ -331,7 +337,7 @@ const getAllServices = async () => {
  */
 const getServiceById = async (serviceId) => {
   try {
-    const doc = await serviceCollection.doc(serviceId).get();
+    const doc = await getServiceCollection().doc(serviceId).get();
     if (!doc.exists) {
       const fallback = DEFAULT_SERVICES.find(s => s.id === serviceId);
       return fallback || null;
@@ -351,7 +357,7 @@ const seedServiceDefinitions = async () => {
   try {
     for (const service of DEFAULT_SERVICES) {
       const { id, ...data } = service;
-      await serviceCollection.doc(id).set(data);
+      await getServiceCollection().doc(id).set(data);
     }
     console.log("Seeded default service definitions.");
   } catch (err) {

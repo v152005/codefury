@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from "react";
 import { API_BASE_URL } from "../config";
+import { parseApiResponse } from "../utils/api";
 
 const AuthContext = createContext();
 
@@ -54,9 +55,14 @@ export const AuthProvider = ({ children }) => {
           },
         });
         if (response.ok) {
-          const data = await response.json();
+          const data = await parseApiResponse(response, "Profile check failed");
+          if (!data?.profile) {
+            logout();
+            return;
+          }
+
           setUser(data.profile);
-          if (data.profile?.preferredLanguage) {
+          if (data.profile.preferredLanguage) {
             setLang(data.profile.preferredLanguage);
           }
         } else {

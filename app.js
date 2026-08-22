@@ -19,6 +19,10 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/ai", aiRoutes);
 
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "API endpoint not found." });
+});
+
 // Serve static frontend in production (only when not running on Vercel)
 if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   app.use(express.static(path.join(__dirname, "client/dist")));
@@ -32,5 +36,15 @@ if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
     });
   });
 }
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  const status = err.status || err.statusCode || 500;
+  return res.status(status).json({ error: err.message || "Internal server error." });
+});
 
 module.exports = app;

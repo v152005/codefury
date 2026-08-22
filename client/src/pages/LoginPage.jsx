@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { loginTranslations } from "../utils/translations";
 import { API_BASE_URL } from "../config";
+import { parseApiResponse } from "../utils/api";
 
 
 export default function LoginPage() {
@@ -46,10 +47,10 @@ export default function LoginPage() {
         body: JSON.stringify({ email: trimmedEmail, password }),
       });
 
-      const data = await response.json();
+      const data = await parseApiResponse(response, "Login failed");
 
       if (!response.ok) {
-        throw new Error(data.error || "Login failed");
+        throw new Error(data?.error || "Login failed");
       }
 
       setStatus(t.success);
@@ -65,7 +66,7 @@ export default function LoginPage() {
           },
         });
         if (profileRes.ok) {
-          const profileData = await profileRes.json();
+          const profileData = await parseApiResponse(profileRes, "Profile check failed");
           if (profileData && profileData.profile) {
             userObj = { ...data.user, ...profileData.profile };
             if (profileData.profile.preferredLanguage) {

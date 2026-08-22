@@ -20,6 +20,10 @@ const authMiddleware = async (req, res, next) => {
       return next();
     } catch (jwtErr) {
       // If that fails, try verifying it as a Firebase ID token
+      if (!auth) {
+        return res.status(401).json({ error: "Invalid or expired token." });
+      }
+
       const decodedIdToken = await auth.verifyIdToken(token);
       req.user = {
         uid: decodedIdToken.uid,

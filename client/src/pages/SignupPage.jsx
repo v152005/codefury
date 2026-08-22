@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { signupTranslations } from "../utils/translations";
 import { API_BASE_URL } from "../config";
+import { parseApiResponse } from "../utils/api";
 
 export default function SignupPage() {
   const { lang, setLanguage, login, size, setSize } = useAuth();
@@ -60,10 +61,10 @@ export default function SignupPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = await parseApiResponse(response, "Signup failed");
 
       if (!response.ok) {
-        throw new Error(data.error || "Signup failed");
+        throw new Error(data?.error || "Signup failed");
       }
 
       setStatus(t.success);

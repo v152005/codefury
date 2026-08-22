@@ -1,6 +1,12 @@
-const { db } = require("../config/firebase");
+const { db, getFirebaseConfigMessage } = require("../config/firebase");
 
-const userCollection = db.collection("users");
+const getUserCollection = () => {
+  if (!db) {
+    throw new Error(getFirebaseConfigMessage());
+  }
+
+  return db.collection("users");
+};
 
 /**
  * Creates a new user document in Firestore.
@@ -8,7 +14,7 @@ const userCollection = db.collection("users");
  * @param {object} userData - User metadata (email, name, password hash, salt).
  */
 const createUserDoc = async (uid, userData) => {
-  await userCollection.doc(uid).set({
+  await getUserCollection().doc(uid).set({
     ...userData,
     createdAt: new Date(),
   });
@@ -20,7 +26,7 @@ const createUserDoc = async (uid, userData) => {
  * @returns {object|null} The user object or null.
  */
 const findUserByEmail = async (email) => {
-  const querySnapshot = await userCollection
+  const querySnapshot = await getUserCollection()
     .where("email", "==", email.toLowerCase().trim())
     .limit(1)
     .get();
@@ -39,7 +45,7 @@ const findUserByEmail = async (email) => {
  * @param {object} profileData - Profile attributes to update.
  */
 const updateUserProfile = async (uid, profileData) => {
-  await userCollection.doc(uid).update({
+  await getUserCollection().doc(uid).update({
     ...profileData,
     updatedAt: new Date(),
   });
@@ -51,7 +57,7 @@ const updateUserProfile = async (uid, profileData) => {
  * @returns {object|null} The user object or null.
  */
 const findUserById = async (uid) => {
-  const doc = await userCollection.doc(uid).get();
+  const doc = await getUserCollection().doc(uid).get();
   if (!doc.exists) {
     return null;
   }

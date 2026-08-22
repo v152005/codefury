@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-const { auth } = require("../config/firebase");
+const { auth, getFirebaseConfigMessage } = require("../config/firebase");
 const userModel = require("../models/userModel");
 
 // Get JWT secret from environment variables
@@ -33,6 +33,10 @@ const verifyPassword = (password, salt, hash) => {
  * Registers a user by creating them in Firebase Auth and saving metadata + hashed pass to Firestore.
  */
 const registerUser = async (name, email, password) => {
+  if (!auth) {
+    throw new Error(getFirebaseConfigMessage());
+  }
+
   const existingUser = await userModel.findUserByEmail(email);
   if (existingUser) {
     throw new Error("User already exists with this email");
