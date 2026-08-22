@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import VoiceInput from "../components/VoiceInput";
+import DocumentScanner from "../components/DocumentScanner";
+import ExtractedFields from "../components/ExtractedFields";
+import { extractFieldsDeterministically } from "../utils/ocrParser";
 
 const langLocales = {
   en: "en-IN",
@@ -30,6 +33,11 @@ export default function ServiceForm() {
   const [explaining, setExplaining] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const [parsedConfirmation, setParsedConfirmation] = useState(null);
+
+  // Document OCR states
+  const [showScanner, setShowScanner] = useState(false);
+  const [extractedData, setExtractedData] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
 
 
@@ -262,6 +270,96 @@ export default function ServiceForm() {
     };
   }, []);
 
+  const handleOCRComplete = async (ocrText) => {
+    setShowScanner(false);
+    
+    // 1. Try deterministic extraction first
+    const requiredFields = questions.map(q => q.id);
+    const deterministic = extractFieldsDeterministically(ocrText, requiredFields);
+    
+    // Check if any fields were NOT confidently extracted (confidence < 0.90)
+    const missingOrLowConfidence = requiredFields.filter(
+      field => !deterministic.fields[field] || deterministic.confidence[field] < 0.90
+    );
+    
+    if (missingOrLowConfidence.length > 0 && token) {
+      // 2. Call backend Gemini fallback for remaining fields
+      setIsExtracting(true);
+      try {
+        const res = await fetch("http://localhost:5000/api/ai/parse-document", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            documentType: "aadhaar",
+            ocrText,
+            requiredFields: missingOrLowConfidence
+          })
+        });
+        
+        if (res.ok) {
+          const geminiResult = await res.json();
+          requiredFields.forEach(field => {
+            if (geminiResult.fields?.[field] !== undefined && geminiResult.fields[field] !== null) {
+              if (!deterministic.fields[field] || (geminiResult.confidence?.[field] || 0) > deterministic.confidence[field]) {
+                deterministic.fields[field] = geminiResult.fields[field];
+                deterministic.confidence[field] = geminiResult.confidence?.[field] ?? 0.85;
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Gemini document parsing error:", err);
+      } finally {
+        setIsExtracting(false);
+      }
+    }
+    
+    setExtractedData(deterministic);
+  };
+
+  const handleConfirmExtractedFields = async (confirmedFields) => {
+    const updatedAnswers = {
+      ...answers,
+      ...confirmedFields
+    };
+    setAnswers(updatedAnswers);
+    setExtractedData(null);
+    
+    const currentFieldId = questions[currentFieldIndex].id;
+    if (confirmedFields[currentFieldId]) {
+      setCurrentValue(confirmedFields[currentFieldId]);
+    }
+    
+    if (applicationId && token) {
+      try {
+        await fetch(`http://localhost:5000/api/applications/${applicationId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ answers: updatedAnswers })
+        });
+      } catch (err) {
+        console.error("Error saving updated application answers:", err);
+      }
+    }
+
+    let nextIndex = currentFieldIndex;
+    for (let i = 0; i < questions.length; i++) {
+      if (!updatedAnswers[questions[i].id]) {
+        nextIndex = i;
+        break;
+      }
+    }
+    
+    setCurrentFieldIndex(nextIndex);
+    setCurrentValue(updatedAnswers[questions[nextIndex].id] || "");
+  };
+
   const handleVoiceTranscript = async (transcript) => {
     if (!currentQuestion) return;
 
@@ -471,9 +569,30 @@ export default function ServiceForm() {
         {/* Form Question */}
         <form onSubmit={handleNext}>
           <div style={{ minHeight: "130px" }}>
-            <label htmlFor="wizard-input" style={{ display: "block", font: "700 18px Manrope", marginBottom: "16px", color: "#fff", lineHeight: "1.4" }}>
-              {labelText}
-            </label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <label htmlFor="wizard-input" style={{ display: "block", font: "700 18px Manrope", margin: 0, color: "#fff", lineHeight: "1.4" }}>
+                {labelText}
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowScanner(true)}
+                style={{
+                  background: "rgba(219, 245, 96, 0.08)",
+                  border: "1px solid rgba(219, 245, 96, 0.3)",
+                  color: "#d9f560",
+                  borderRadius: "12px",
+                  padding: "8px 14px",
+                  fontWeight: "700",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px"
+                }}
+              >
+                📄 Scan Document
+              </button>
+            </div>
 
             {/* AI Confirmation Screen Banner */}
             {parsedConfirmation ? (
@@ -637,6 +756,32 @@ export default function ServiceForm() {
           )}
         </form>
       </div>
+
+      {showScanner && (
+        <DocumentScanner
+          onOCRComplete={handleOCRComplete}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {isExtracting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 animate-fadeIn">
+          <div className="bg-[#092d2c] border border-[#1e4a47] rounded-xl p-6 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-[#d9f560] mb-4"></div>
+            <p className="text-[#f6f3eb] font-semibold">Extracting fields with AI...</p>
+          </div>
+        </div>
+      )}
+
+      {extractedData && (
+        <ExtractedFields
+          extractedData={extractedData}
+          requiredFields={questions.map(q => q.id)}
+          currentLanguage={lang}
+          onConfirm={handleConfirmExtractedFields}
+          onCancel={() => setExtractedData(null)}
+        />
+      )}
     </div>
   );
 }

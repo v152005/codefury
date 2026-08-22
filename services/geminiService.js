@@ -181,7 +181,87 @@ You MUST respond with a JSON object containing:
   }
 };
 
+/**
+ * Parses OCR document text and extracts the required fields using Gemini.
+ * @param {string} documentType - The type of document (e.g. 'aadhaar', 'marksheet', 'ration_card').
+ * @param {string} ocrText - The raw OCR text scanned from the document.
+ * @param {Array<string>} requiredFields - The fields required to be extracted.
+ * @returns {Promise<object>} Extraction result containing { documentType, fields, confidence }.
+ */
+const parseDocumentText = async (documentType, ocrText, requiredFields) => {
+  if (!process.env.GEMINI_API_KEY) {
+    const emptyFields = {};
+    const defaultConfidence = {};
+    requiredFields.forEach(f => {
+      emptyFields[f] = null;
+      defaultConfidence[f] = 0.0;
+    });
+    return {
+      documentType,
+      fields: emptyFields,
+      confidence: defaultConfidence
+    };
+  }
+
+  const prompt = `
+You are a document parser designed to extract specific structured fields from OCR text.
+
+Context:
+Document Type: "${documentType}"
+Required Fields to Extract: ${JSON.stringify(requiredFields)}
+Raw OCR Text:
+"""
+${ocrText}
+"""
+
+Task:
+Extract the value of the requested fields from the OCR text.
+For each requested field, return its extracted normalized value (or null if it is missing or not present in the OCR text).
+Normalize dates to "YYYY-MM-DD" if possible.
+Normalize names to Title Case.
+
+You MUST respond with a JSON object exactly containing:
+{
+  "documentType": "${documentType}",
+  "fields": {
+    // For each requested field:
+    "fieldName": "extracted_value_or_null"
+  },
+  "confidence": {
+    // For each requested field: a confidence float between 0.0 and 1.0 representing extraction accuracy
+    "fieldName": 0.95
+  }
+}
+`;
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
+    });
+
+    const responseText = result.response.text();
+    return JSON.parse(responseText.trim());
+  } catch (error) {
+    console.error("Gemini parseDocumentText API error:", error);
+    const emptyFields = {};
+    const defaultConfidence = {};
+    requiredFields.forEach(f => {
+      emptyFields[f] = null;
+      defaultConfidence[f] = 0.0;
+    });
+    return {
+      documentType,
+      fields: emptyFields,
+      confidence: defaultConfidence
+    };
+  }
+};
+
 module.exports = {
   explainQuestion,
   parseUserResponse,
+  parseDocumentText,
 };

@@ -36,7 +36,26 @@ const parse = async (req, res) => {
   }
 };
 
+/**
+ * Handles parsing OCR document text using AI.
+ */
+const parseDocument = async (req, res) => {
+  try {
+    const { documentType, ocrText, requiredFields } = req.body;
+    if (!documentType || !ocrText || !requiredFields || !Array.isArray(requiredFields)) {
+      return res.status(400).json({ error: "documentType, ocrText, and requiredFields (array) are required." });
+    }
+
+    const parsedData = await geminiService.parseDocumentText(documentType, ocrText, requiredFields);
+    return res.status(200).json(parsedData);
+  } catch (error) {
+    console.error("AI Parse Document Controller Error:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   explain,
   parse,
+  parseDocument,
 };

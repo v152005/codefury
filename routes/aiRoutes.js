@@ -9,5 +9,6 @@ router.use(authMiddleware);
 
 router.post("/explain", aiController.explain);
 router.post("/parse-response", aiController.parse);
+router.post("/parse-document", aiController.parseDocument);
 
 module.exports = router;
