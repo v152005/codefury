@@ -19,8 +19,8 @@ app.use("/api/services", serviceRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/ai", aiRoutes);
 
-// Serve static frontend in production
-if (process.env.NODE_ENV === "production") {
+// Serve static frontend in production (only when not running on Vercel)
+if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
   app.use(express.static(path.join(__dirname, "client/dist")));
   app.get('/{*splat}', (req, res) => {
     res.sendFile(path.join(__dirname, "client/dist/index.html"));
